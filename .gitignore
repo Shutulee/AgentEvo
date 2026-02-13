@@ -45,3 +45,6 @@ htmlcov/
 # AgentEvo specific
 agent-evo-report/
 .agent-evo-cache/
+
+# Docs
+docs/
