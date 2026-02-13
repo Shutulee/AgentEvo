@@ -128,6 +128,27 @@ LLM 会自动判断每个维度是否适用——比如纯知识问答不涉及�
 
 > **可选增强：** 如果你需要额外的精确校验，可以在 `expected` 字段中补充校验规则：`contains`（必须包含的关键词列表）、`not_contains`（禁止出现的词）、`json_schema`（JSON Schema 校验）、`exact_json`（精确 JSON 匹配）等。这些规则会在 LLM 评判之外叠加确定性检查，取最低分。
 
+除了手写，AgentEvo 还支持自动扩充测评集：
+
+**变异扩充** — 基于已有用例自动生成变体：
+
+```bash
+agent-evo mutate --seed ./tests/golden.yaml --count 3 -o ./tests/silver.yaml
+```
+
+**线上导入** — 把生产环境的 Bad Case 转化为测试用例：
+
+```bash
+agent-evo import --format jsonl --file ./bad_cases.jsonl -o ./tests/production.yaml
+```
+
+自动生成的用例默认为 `pending` 状态，需经审核后才参与正式评测：
+
+```bash
+agent-evo review --interactive     # 逐条审核
+agent-evo review --approve-all     # 全部通过
+```
+
 ### 第五步：运行
 
 ```bash
@@ -164,47 +185,6 @@ optimization:
   regression_threshold: 0.9
 ```
 
-## 测评集管理
-
-除了手工编写用例，AgentEvo 还提供两种自动扩充方式：
-
-**变异扩充** — 基于已有用例自动生成变体：
-
-```bash
-agent-evo mutate --seed ./tests/golden.yaml --count 3 -o ./tests/silver.yaml
-```
-
-**线上导入** — 把生产环境的 Bad Case 转化为测试用例：
-
-```bash
-agent-evo import --format jsonl --file ./bad_cases.jsonl -o ./tests/production.yaml
-```
-
-自动生成的用例默认为 `pending` 状态，需经审核后才参与正式评测：
-
-```bash
-agent-evo review --interactive     # 逐条审核
-agent-evo review --approve-all     # 全部通过
-```
-
-## Tag 策略门禁
-
-可以为不同 tag 设置独立的通过率门禁，用于发布前的质量卡点：
-
-```yaml
-tag_policies:
-  safety:
-    pass_threshold: 1.0         # 安全用例必须 100% 通过
-    required_for_release: true
-  core:
-    pass_threshold: 0.8
-    required_for_release: true
-```
-
-```bash
-agent-evo gate-check    # 检查所有 required_for_release 的 tag 是否达标
-```
-
 ## 查看报告
 
 ```bash
@@ -224,6 +204,32 @@ agent-evo eval
 ```
 
 这个示例只是一个最简单的 demo，实际使用时你需要把入口函数指向自己的 Agent。
+
+## Tag 策略门禁
+
+可以为不同 tag 设置独立的通过率门禁：
+
+```yaml
+tag_policies:
+  safety:
+    pass_threshold: 1.0         # 安全用例必须 100% 通过
+    required_for_release: true
+  core:
+    pass_threshold: 0.8
+    required_for_release: true
+```
+
+```bash
+agent-evo gate-check    # 检查所有 required_for_release 的 tag 是否达标
+```
+
+`gate-check` 不达标时会返回非零退出码，你可以在 CI pipeline 中利用这一点自动阻断发布。例如在 GitHub Actions 中：
+
+```yaml
+# .github/workflows/agent-ci.yml
+- run: agent-evo eval
+- run: agent-evo gate-check   # 不达标则 pipeline 失败，PR 无法合并
+```
 
 ## 命令参考
 
