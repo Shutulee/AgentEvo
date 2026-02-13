@@ -2,23 +2,45 @@
 
 from typing import Optional
 from collections import Counter
+from glob import glob
+from pathlib import Path
 
+import yaml
 from rich.console import Console
 from rich.table import Table
 
 from agent_evo.core.config import load_config
-from agent_evo.core.generator import Generator
+from agent_evo.models.test_case import TestCase, TestSuite
 
 console = Console()
+
+
+def _load_cases_only(config) -> list[TestCase]:
+    """只加载测试用例，不初始化 Agent（stats 不需要执行 Agent）"""
+    pattern = str(Path.cwd() / config.test_cases)
+    files = glob(pattern, recursive=True)
+
+    cases = []
+    for file_path in files:
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        if not data or "cases" not in data:
+            continue
+        suite = TestSuite(**data)
+        for case_data in suite.cases:
+            if isinstance(case_data, dict):
+                case = TestCase(**case_data)
+            else:
+                case = case_data
+            cases.append(case)
+    return cases
 
 
 def run_stats(config_path: str):
     """按 tier/tag 统计用例数量分布"""
     try:
         config = load_config(config_path)
-        from pathlib import Path
-        generator = Generator(config, Path.cwd())
-        cases = generator.load_test_cases()
+        cases = _load_cases_only(config)
 
         console.print(f"\n[bold]测评集统计[/bold] (共 {len(cases)} 条用例)\n")
 

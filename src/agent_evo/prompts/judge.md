@@ -35,15 +35,15 @@
 
 ## 输出格式
 请严格以 JSON 格式输出：
-{
-  "content": {"applicable": true, "score": 0.0-1.0, "reason": "评判理由"},
-  "behavior": {"applicable": true, "score": 0.0-1.0, "reason": "评判理由"},
-  "structure": {"applicable": true, "score": 0.0-1.0, "reason": "评判理由"}
-}
+{{
+  "content": {{"applicable": true, "score": 0.0-1.0, "reason": "评判理由"}},
+  "behavior": {{"applicable": true, "score": 0.0-1.0, "reason": "评判理由"}},
+  "structure": {{"applicable": true, "score": 0.0-1.0, "reason": "评判理由"}}
+}}
 
 如果某个维度不适用：
-{
-  "content": {"applicable": true, "score": 0.85, "reason": "信息点覆盖完整"},
-  "behavior": {"applicable": true, "score": 1.0, "reason": "行为模式一致"},
-  "structure": {"applicable": false, "reason": "纯文字问答，不涉及结构化格式"}
-}
+{{
+  "content": {{"applicable": true, "score": 0.85, "reason": "信息点覆盖完整"}},
+  "behavior": {{"applicable": true, "score": 1.0, "reason": "行为模式一致"}},
+  "structure": {{"applicable": false, "reason": "纯文字问答，不涉及结构化格式"}}
+}}

@@ -47,7 +47,7 @@ class CallableAdapter(AgentAdapter):
             result = await self.func(**kwargs)
         else:
             # 在线程池中运行同步函数
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(None, lambda: self.func(**kwargs))
         
         return str(result) if result is not None else ""

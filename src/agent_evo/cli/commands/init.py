@@ -51,20 +51,6 @@ tag_policies:
     pass_threshold: 0.8
     required_for_release: true
 
-# 诊断配置
-diagnosis:
-  confidence_threshold: 0.8
-  categories:
-    - id: "PROMPT_ISSUE"
-      description: "提示词缺陷"
-      auto_fix: true
-    - id: "CONTEXT_ISSUE"
-      description: "上下文/知识不足"
-      auto_fix: false
-    - id: "EDGE_CASE"
-      description: "边界场景"
-      auto_fix: true
-
 # 优化配置
 optimization:
   max_iterations: 3
@@ -142,6 +128,7 @@ cases:
   - id: "basic-001"
     name: "简单问答"
     input: "你好，请介绍一下你自己"
+    expected_output: "你好！我是一个有帮助的 AI 助手，可以回答你的各种问题。"
     expected:
       contains: ["AI", "助手"]
     tags: ["core"]
@@ -149,16 +136,15 @@ cases:
   - id: "basic-002"
     name: "知识问答"
     input: "什么是人工智能？"
+    expected_output: "人工智能(AI)是计算机科学的一个分支，致力于创建能够模拟人类智能行为的系统，包括机器学习、自然语言处理等技术。"
     expected:
-      contains: ["人工智能", "AI", "机器"]
+      contains: ["人工智能", "AI"]
     tags: ["core"]
 
   - id: "edge-001"
     name: "空输入处理"
     input: ""
-    expected:
-      behavior: "ask_clarification"
-      behavior_hint: "应该请求用户提供更多信息"
+    expected_output: "您好！看起来您还没有输入问题。请告诉我您想了解什么，我会尽力帮助您。"
     tags: ["edge"]
 """
 
