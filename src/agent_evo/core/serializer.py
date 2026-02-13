@@ -1,4 +1,5 @@
-"""TestCase 序列化：Model → YAML 写入"""
+"""TestCase 序列化：Model → YAML 写入
+TestCase serialization: Model → YAML writing"""
 
 from pathlib import Path
 from typing import Optional
@@ -13,7 +14,7 @@ def test_cases_to_yaml(
     name: str = "Generated Test Cases",
     description: Optional[str] = None,
 ) -> str:
-    """将 TestCase 列表序列化为 YAML 字符串"""
+    """将 TestCase 列表序列化为 YAML 字符串 / Serialize TestCase list to YAML string"""
     suite_dict = {"name": name}
     if description:
         suite_dict["description"] = description
@@ -32,7 +33,7 @@ def save_test_cases(
     name: str = "Generated Test Cases",
     description: Optional[str] = None,
 ) -> Path:
-    """将 TestCase 列表写入 YAML 文件"""
+    """将 TestCase 列表写入 YAML 文件 / Write TestCase list to YAML file"""
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -42,7 +43,7 @@ def save_test_cases(
 
 
 def load_test_cases_from_yaml(file_path: str) -> list[TestCase]:
-    """从 YAML 文件加载 TestCase 列表"""
+    """从 YAML 文件加载 TestCase 列表 / Load TestCase list from YAML file"""
     path = Path(file_path)
     with open(path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
@@ -54,7 +55,8 @@ def load_test_cases_from_yaml(file_path: str) -> list[TestCase]:
 
 
 def _case_to_dict(case: TestCase) -> dict:
-    """将 TestCase 转为简洁的字典（省略默认值字段）"""
+    """将 TestCase 转为简洁的字典（省略默认值字段）
+    Convert TestCase to concise dict (omit default value fields)"""
     d: dict = {"id": case.id, "name": case.name}
 
     # input
@@ -68,6 +70,7 @@ def _case_to_dict(case: TestCase) -> dict:
         d["expected_output"] = case.expected_output
 
     # 额外的精确校验规则（排除 output 避免重复）
+    # Additional precise validation rules (exclude output to avoid duplication)
     expected = case.expected.model_dump(exclude_none=True)
     expected.pop("output", None)
     if expected:
@@ -77,7 +80,7 @@ def _case_to_dict(case: TestCase) -> dict:
     if case.tags:
         d["tags"] = case.tags
 
-    # 非默认值的新增字段
+    # 非默认值的新增字段 / Non-default additional fields
     if case.tier.value != "gold":
         d["tier"] = case.tier.value
     if case.source.value != "manual":

@@ -1,10 +1,12 @@
-"""import 命令：从线上数据导入测评集"""
+"""import 命令：从线上数据导入测评集
+import command: import test cases from production data"""
 
 from rich.console import Console
 
 from agent_evo.core.config import load_config
 from agent_evo.core.importer import TestCaseImporter
 from agent_evo.core.serializer import load_test_cases_from_yaml, save_test_cases
+from agent_evo.utils.i18n import t
 
 console = Console()
 
@@ -16,14 +18,14 @@ async def run_import(
     output_path: str,
     auto_refine: bool,
 ):
-    """从线上数据导入测评集"""
+    """从线上数据导入测评集 / Import test cases from production data"""
     try:
         config = load_config(config_path)
         importer = TestCaseImporter(config)
 
-        console.print(f"正在导入 [bold]{file_path}[/bold] (格式: {format})")
+        console.print(t("importing").format(path=file_path, fmt=format))
 
-        # 导入
+        # 导入 / Import
         cases, result = await importer.import_from_file(
             file_path=file_path,
             format=format,
@@ -32,13 +34,13 @@ async def run_import(
 
         if result.errors:
             for err in result.errors:
-                console.print(f"[yellow]警告: {err}[/yellow]")
+                console.print(f"[yellow]{t('warn')}: {err}[/yellow]")
 
         if not cases:
-            console.print("[red]未导入任何用例[/red]")
+            console.print(f"[red]{t('no_cases_imported')}[/red]")
             raise SystemExit(1)
 
-        # 去重（与已有用例对比）
+        # 去重（与已有用例对比）/ Deduplicate (compare with existing cases)
         try:
             from pathlib import Path
             if Path(output_path).exists():
@@ -47,26 +49,26 @@ async def run_import(
                 cases = await importer.deduplicate(cases, existing)
                 removed = before - len(cases)
                 if removed:
-                    console.print(f"[yellow]去重移除 {removed} 条重复用例[/yellow]")
+                    console.print(f"[yellow]{t('dedup_removed')}: {removed}[/yellow]")
                     result.duplicates_removed = removed
         except Exception:
             pass
 
-        # 写入文件
+        # 写入文件 / Write to file
         path = save_test_cases(
             cases, output_path,
-            name="线上导入测评集",
-            description=f"从 {file_path} 导入",
+            name="Production Import / 线上导入测评集",
+            description=f"Imported from / 导入自 {file_path}",
         )
 
-        console.print(f"\n[green]导入完成[/green]")
-        console.print(f"  总记录数: {result.total_records}")
-        console.print(f"  成功导入: {len(cases)}")
-        console.print(f"  去重移除: {result.duplicates_removed}")
-        console.print(f"  待审核:   {len(cases)}")
-        console.print(f"  输出文件: {path}")
-        console.print(f"\n[yellow]所有用例状态为 pending，请通过 agent-evo review 审核[/yellow]")
+        console.print(f"\n[green]{t('import_done')}[/green]")
+        console.print(f"  {t('total_records')}: {result.total_records}")
+        console.print(f"  {t('imported_count')}: {len(cases)}")
+        console.print(f"  {t('dedup_removed')}: {result.duplicates_removed}")
+        console.print(f"  {t('pending_count')}: {len(cases)}")
+        console.print(f"  {t('output_file')}: {path}")
+        console.print(f"\n[yellow]{t('import_review_hint')}[/yellow]")
 
     except FileNotFoundError as e:
-        console.print(f"[red]文件未找到: {e}[/red]")
+        console.print(f"[red]{e}[/red]")
         raise SystemExit(1)

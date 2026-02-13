@@ -1,4 +1,5 @@
-"""AgentEvo - LLM Agent 自动化评测与优化框架"""
+"""AgentEvo - LLM Agent 自动化评测与优化框架
+AgentEvo - LLM Agent automated evaluation and optimization framework"""
 
 __version__ = "0.1.0"
 

@@ -1,4 +1,5 @@
-"""Pipeline 编排器 — Phase A-B-C-D 四阶段批量流程"""
+"""Pipeline 编排器 — Phase A-B-C-D 四阶段批量流程
+Pipeline orchestrator — Phase A-B-C-D four-stage batch workflow"""
 
 import json
 from datetime import datetime
@@ -15,13 +16,14 @@ from agent_evo.core.evaluator import Evaluator
 from agent_evo.core.optimizer import Optimizer
 from agent_evo.integrations.git import GitIntegration
 from agent_evo.utils.llm import LLMClient
+from agent_evo.utils.i18n import t
 
 
 console = Console()
 
 
 class PipelineResult:
-    """Pipeline 执行结果"""
+    """Pipeline 执行结果 / Pipeline execution result"""
 
     def __init__(
         self,
@@ -41,7 +43,8 @@ class PipelineResult:
 
 
 class Pipeline:
-    """AgentEvo 核心 Pipeline — 四阶段批量流程"""
+    """AgentEvo 核心 Pipeline — 四阶段批量流程
+    AgentEvo core Pipeline — four-stage batch workflow"""
 
     def __init__(self, config: Config, project_dir: Optional[str] = None):
         self.config = config
@@ -60,16 +63,17 @@ class Pipeline:
         tier: Optional[str] = None,
         dry_run: bool = False,
     ) -> PipelineResult:
-        """四阶段批量流程"""
-        console.print("\n[bold blue]AgentEvo Pipeline 启动[/bold blue]\n")
+        """四阶段批量流程 / Four-stage batch workflow"""
+        console.print(f"\n[bold blue]{t('pipeline_start')}[/bold blue]\n")
 
         # ── Phase A：批量执行 + 评测（因子化，归因即时完成）──
+        # ── Phase A: Batch execution + evaluation (factor-based, attribution done in-place) ──
         test_cases = self.generator.load_test_cases(tags=tags)
         if tier:
             test_cases = [c for c in test_cases if c.tier.value == tier]
-        console.print(f"加载了 {len(test_cases)} 个测试用例")
+        console.print(t("loaded_cases").format(n=len(test_cases)))
 
-        console.print("\n[bold]Phase A: 批量执行 + 因子化评测[/bold]")
+        console.print(f"\n[bold]{t('phase_a')}[/bold]")
         started_at = datetime.now()
         results = await self.generator.run_all(test_cases)
         eval_report = await self.evaluator.evaluate_all(results)
@@ -84,74 +88,79 @@ class Pipeline:
 
         if auto_fix and eval_report.failed > 0:
             # ── Phase B：聚合分析（轻量，只传归因摘要）──
-            console.print("\n[bold]Phase B: 聚合归因分析[/bold]")
+            # ── Phase B: Aggregated analysis (lightweight, only pass attribution summary) ──
+            console.print(f"\n[bold]{t('phase_b')}[/bold]")
             aggregated = await self._aggregate_diagnosis(eval_report)
             eval_report.aggregated_diagnosis = aggregated
 
             if aggregated.suggested_prompt_changes:
-                console.print(f"  发现 {len(aggregated.common_patterns)} 个共性模式")
+                console.print(f"  {t('found_patterns').format(n=len(aggregated.common_patterns))}")
 
                 if dry_run:
-                    console.print("\n[yellow]Dry-run 模式，不实际修改文件[/yellow]")
+                    console.print(f"\n[yellow]{t('dry_run_mode')}[/yellow]")
                     for p in aggregated.common_patterns:
                         console.print(f"  - {p}")
                     for s in aggregated.suggested_prompt_changes:
-                        console.print(f"  建议: {s}")
+                        console.print(f"  建议/Suggestion: {s}")
                 else:
                     # ── Phase C：统一优化 + 回归验证 ──
-                    console.print("\n[bold]Phase C: 统一优化 + 回归验证[/bold]")
+                    # ── Phase C: Unified optimization + regression ──
+                    console.print(f"\n[bold]{t('phase_c')}[/bold]")
                     optimization_result = await self.optimizer.optimize(
                         aggregated_diagnosis=aggregated,
                         test_cases=test_cases,
                     )
 
                     if optimization_result.success:
-                        console.print(f"[green]优化成功！迭代 {optimization_result.iterations} 次[/green]")
+                        console.print(f"[green]{t('optimize_success').format(n=optimization_result.iterations)}[/green]")
                     else:
-                        console.print(f"[red]优化未能完全解决问题: {optimization_result.error_message}[/red]")
+                        console.print(f"[red]{t('optimize_fail').format(msg=optimization_result.error_message)}[/red]")
 
                     # ── Phase D：生成报告 + 创建 PR ──
+                    # ── Phase D: Generate report + create PR ──
                     if create_pr and self.git and optimization_result.success:
-                        console.print("\n[bold]Phase D: 创建 PR[/bold]")
+                        console.print(f"\n[bold]{t('phase_d')}[/bold]")
                         pr_url = await self.git.create_pr(
-                            title=f"[AgentEvo] 自动优化: 修复 {eval_report.failed} 个失败用例",
+                            title=f"[AgentEvo] Auto-optimize: fix {eval_report.failed} failed cases",
                             body=self._generate_pr_body(eval_report, optimization_result, aggregated),
                             changes=[(self.config.agent.prompt_file, optimization_result.optimized_prompt)],
                         )
-                        console.print(f"[green]PR 已创建: {pr_url}[/green]")
+                        console.print(f"[green]{t('pr_created').format(url=pr_url)}[/green]")
             else:
-                console.print("[yellow]未找到可自动修复的共性模式[/yellow]")
+                console.print(f"[yellow]{t('no_auto_fix_patterns')}[/yellow]")
 
         eval_report.optimization = optimization_result
         return PipelineResult(eval_report=eval_report, optimization=optimization_result, pr_url=pr_url)
 
     async def eval_only(self, tags: Optional[list[str]] = None, tier: Optional[str] = None) -> EvalReport:
-        """只运行评测，不优化"""
+        """只运行评测，不优化 / Run evaluation only, no optimization"""
         test_cases = self.generator.load_test_cases(tags=tags)
         if tier:
             test_cases = [c for c in test_cases if c.tier.value == tier]
         results = await self.generator.run_all(test_cases)
         return await self.evaluator.evaluate_all(results)
 
-    # ── Phase B 聚合分析 ─────────────────────────────────
+    # ── Phase B 聚合分析 / Phase B Aggregated analysis ────────
 
     async def _aggregate_diagnosis(self, report: EvalReport) -> AggregatedDiagnosis:
-        """收集失败用例的因子 reason，用一次 LLM 调用找共性模式"""
+        """收集失败用例的因子 reason，用一次 LLM 调用找共性模式
+        Collect factor reasons from failed cases, find common patterns with one LLM call"""
         failed = report.get_failed_results()
         if not failed:
             return AggregatedDiagnosis()
 
         # 构建归因摘要（只传 ID + tags + 因子 reason，省 token）
+        # Build attribution summary (only ID + tags + factor reason to save tokens)
         summaries = []
         for r in failed:
             factor_info = "; ".join(
                 f"{fr.factor_id}({fr.score:.2f}): {fr.reason}" for fr in r.factor_scores if fr.score < 1.0
             )
-            summaries.append(f"- {r.case_id} [tags: {','.join(r.tags)}] → {factor_info or r.fail_reason or '未知'}")
+            summaries.append(f"- {r.case_id} [tags: {','.join(r.tags)}] → {factor_info or r.fail_reason or 'unknown'}")
 
         failure_text = "\n".join(summaries)
 
-        # 加载聚合 prompt
+        # 加载聚合 prompt / Load aggregate prompt
         prompt_dir = Path(__file__).parent.parent / "prompts"
         prompt_file = prompt_dir / "aggregate.md"
         if prompt_file.exists():
@@ -170,55 +179,55 @@ class Pipeline:
             data = json.loads(response)
             return AggregatedDiagnosis(**data)
         except Exception:
-            # 降级：从因子 reason 直接汇总
+            # 降级：从因子 reason 直接汇总 / Fallback: summarize from factor reasons
             return AggregatedDiagnosis(
-                common_patterns=[f"共 {len(failed)} 条用例失败"],
-                suggested_prompt_changes=["建议人工检查失败用例的因子归因"],
+                common_patterns=[t("common_fail_count").format(n=len(failed))],
+                suggested_prompt_changes=[t("suggest_manual_check")],
             )
 
-    # ── 输出 ─────────────────────────────────────────────
+    # ── 输出 / Output ────────────────────────────────────────
 
     def _print_eval_summary(self, report: EvalReport) -> None:
         status_icon = "[green]PASS[/green]" if report.pass_rate >= 0.95 else "[red]FAIL[/red]" if report.pass_rate < 0.7 else "[yellow]WARN[/yellow]"
 
-        console.print(f"\n{status_icon} [bold]评测结果[/bold]")
-        console.print(f"  总计: {report.total}  通过: {report.passed}  失败: {report.failed}  错误: {report.error}")
-        console.print(f"  通过率: {report.pass_rate:.1%}  耗时: {report.duration_seconds:.2f}s")
+        console.print(f"\n{status_icon} [bold]{t('eval_result')}[/bold]")
+        console.print(f"  {t('total')}: {report.total}  {t('passed')}: {report.passed}  {t('failed')}: {report.failed}  {t('error')}: {report.error}")
+        console.print(f"  {t('pass_rate')}: {report.pass_rate:.1%}  {t('duration')}: {report.duration_seconds:.2f}s")
 
-        # 因子维度汇总
+        # 因子维度汇总 / Factor dimension summary
         if report.factor_summary:
-            console.print("\n  [bold]因子汇总:[/bold]")
+            console.print(f"\n  [bold]{t('factor_summary_title')}[/bold]")
             for fid, fs in report.factor_summary.items():
-                console.print(f"    {fid}: 激活 {fs.activated_count} 次, 平均分 {fs.avg_score:.2f}, 失败 {fs.fail_count} 次")
+                console.print(f"    {t('factor_line').format(fid=fid, activated=fs.activated_count, avg=fs.avg_score, fail=fs.fail_count)}")
 
-        # 门禁检查
+        # 门禁检查 / Gate check
         if report.release_blocked:
-            console.print(f"\n  [bold red]门禁阻断: {', '.join(report.blocking_tags)} 未达标[/bold red]")
+            console.print(f"\n  [bold red]{t('release_blocked').format(tags=', '.join(report.blocking_tags))}[/bold red]")
 
-        # 失败用例
+        # 失败用例 / Failed cases
         if report.failed > 0:
-            console.print("\n  [bold red]失败用例:[/bold red]")
+            console.print(f"\n  [bold red]{t('failed_cases_title')}[/bold red]")
             for r in report.get_failed_results()[:5]:
                 console.print(f"    - {r.case_id}: {r.fail_reason or r.summary[:60]}")
 
     def _generate_pr_body(self, report: EvalReport, opt_result: OptimizationResult, diagnosis: AggregatedDiagnosis) -> str:
-        body = f"""## AgentEvo 自动优化报告
+        body = f"""## AgentEvo Auto-Optimization Report
 
-### 评测结果
-- 总用例: {report.total}
-- 通过率: {report.pass_rate:.1%} (通过 {report.passed} / 失败 {report.failed})
+### Evaluation Result
+- Total cases: {report.total}
+- Pass rate: {report.pass_rate:.1%} (passed {report.passed} / failed {report.failed})
 
-### 共性问题模式
+### Common Patterns
 """
         for p in diagnosis.common_patterns:
             body += f"- {p}\n"
 
-        body += "\n### 修改建议\n"
+        body += "\n### Suggested Changes\n"
         for s in diagnosis.suggested_prompt_changes:
             body += f"- {s}\n"
 
         if opt_result.regression_pass_rate:
-            body += f"\n### 回归测试\n通过率: {opt_result.regression_pass_rate:.1%}\n"
+            body += f"\n### Regression Test\nPass rate: {opt_result.regression_pass_rate:.1%}\n"
 
-        body += "\n---\n*由 AgentEvo 自动生成*"
+        body += "\n---\n*Auto-generated by AgentEvo*"
         return body

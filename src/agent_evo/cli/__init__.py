@@ -1,1 +1,1 @@
-"""CLI 模块"""
+"""CLI 模块 / CLI module"""

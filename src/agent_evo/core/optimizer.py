@@ -1,4 +1,4 @@
-"""提示词优化器"""
+"""提示词优化器 / Prompt optimizer"""
 
 import re
 from pathlib import Path
@@ -9,7 +9,7 @@ from agent_evo.utils.llm import LLMClient
 
 
 class Optimizer:
-    """提示词优化器"""
+    """提示词优化器 / Prompt optimizer"""
 
     def __init__(self, config: Config, project_dir: Path):
         self.config = config
@@ -23,35 +23,37 @@ class Optimizer:
         if prompt_file.exists():
             return prompt_file.read_text(encoding="utf-8")
         return """你是一个 Prompt 工程专家。请根据诊断结果优化系统提示词。
+You are a Prompt engineering expert. Optimize the system prompt based on diagnosis results.
 
-## 当前提示词
+## 当前提示词 / Current Prompt
 {current_prompt}
 
-## 诊断结果
+## 诊断结果 / Diagnosis
 {diagnoses}
 
-## 要求
-1. 保守修改，只修复必要部分
-2. 保持原有风格和结构
-3. 避免过拟合单个用例
+## 要求 / Requirements
+1. 保守修改，只修复必要部分 / Conservative changes, fix only necessary parts
+2. 保持原有风格和结构 / Keep original style and structure
+3. 避免过拟合单个用例 / Avoid overfitting to single cases
 
-请直接输出优化后的完整提示词，用 <optimized_prompt> 和 </optimized_prompt> 标签包裹。"""
+请直接输出优化后的完整提示词，用 <optimized_prompt> 和 </optimized_prompt> 标签包裹。
+Output the optimized prompt wrapped in <optimized_prompt> and </optimized_prompt> tags."""
 
     async def optimize(
         self,
         test_cases: list[TestCase],
         aggregated_diagnosis: Optional[AggregatedDiagnosis] = None,
     ) -> OptimizationResult:
-        """根据聚合归因结果优化提示词"""
+        """根据聚合归因结果优化提示词 / Optimize prompt based on aggregated diagnosis"""
         prompt_file = self.project_dir / self.config.agent.prompt_file
 
         if not prompt_file.exists():
-            return OptimizationResult(success=False, error_message=f"提示词文件不存在: {prompt_file}")
+            return OptimizationResult(success=False, error_message=f"Prompt file not found: {prompt_file}")
 
         original_prompt = prompt_file.read_text(encoding="utf-8")
         current_prompt = original_prompt
 
-        # 构建诊断信息
+        # 构建诊断信息 / Build diagnosis info
         diagnoses_str = self._build_diagnoses_str(aggregated_diagnosis)
 
         for iteration in range(self.config.optimization.max_iterations):
@@ -67,13 +69,13 @@ class Optimizer:
                 if not new_prompt:
                     return OptimizationResult(
                         success=False, iterations=iteration + 1,
-                        error_message="无法从 LLM 响应中提取优化后的提示词",
+                        error_message="Cannot extract optimized prompt from LLM response",
                     )
 
-                # 写入文件
+                # 写入文件 / Write to file
                 prompt_file.write_text(new_prompt, encoding="utf-8")
 
-                # 回归测试
+                # 回归测试 / Regression test
                 if self.config.optimization.run_regression:
                     from agent_evo.core.generator import Generator
                     from agent_evo.core.evaluator import Evaluator
@@ -102,29 +104,30 @@ class Optimizer:
                 return OptimizationResult(success=False, iterations=iteration + 1, error_message=str(e))
 
         # 达到最大迭代次数，恢复原始提示词
+        # Max iterations reached, restore original prompt
         prompt_file.write_text(original_prompt, encoding="utf-8")
         return OptimizationResult(
             success=False, iterations=self.config.optimization.max_iterations,
             original_prompt=original_prompt, optimized_prompt=current_prompt,
-            error_message="达到最大迭代次数，恢复原始提示词",
+            error_message="Max iterations reached, original prompt restored",
         )
 
     @staticmethod
     def _build_diagnoses_str(
         aggregated: Optional[AggregatedDiagnosis],
     ) -> str:
-        """构建诊断信息字符串"""
+        """构建诊断信息字符串 / Build diagnosis info string"""
         parts = []
 
         if aggregated:
             if aggregated.common_patterns:
-                parts.append("共性问题模式:\n" + "\n".join(f"- {p}" for p in aggregated.common_patterns))
+                parts.append("Common patterns:\n" + "\n".join(f"- {p}" for p in aggregated.common_patterns))
             if aggregated.fix_priorities:
-                parts.append("修复优先级:\n" + "\n".join(f"- {p}" for p in aggregated.fix_priorities))
+                parts.append("Fix priorities:\n" + "\n".join(f"- {p}" for p in aggregated.fix_priorities))
             if aggregated.suggested_prompt_changes:
-                parts.append("建议修改:\n" + "\n".join(f"- {s}" for s in aggregated.suggested_prompt_changes))
+                parts.append("Suggested changes:\n" + "\n".join(f"- {s}" for s in aggregated.suggested_prompt_changes))
 
-        return "\n\n".join(parts) if parts else "无具体诊断信息"
+        return "\n\n".join(parts) if parts else "No specific diagnosis information"
 
     def _extract_optimized_prompt(self, response: str) -> Optional[str]:
         match = re.search(r'<optimized_prompt>(.*?)</optimized_prompt>', response, re.DOTALL)

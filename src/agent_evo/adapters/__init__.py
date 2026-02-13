@@ -1,4 +1,4 @@
-"""适配器模块"""
+"""适配器模块 / Adapter modules"""
 
 from agent_evo.adapters.base import AgentAdapter
 from agent_evo.adapters.callable import CallableAdapter

@@ -1,4 +1,4 @@
-"""run 命令"""
+"""run 命令 / run command"""
 
 from typing import Optional
 
@@ -6,6 +6,7 @@ from rich.console import Console
 
 from agent_evo.core.config import load_config
 from agent_evo.core.pipeline import Pipeline
+from agent_evo.utils.i18n import t
 
 console = Console()
 
@@ -18,7 +19,7 @@ async def run_pipeline(
     dry_run: bool,
     tier: Optional[str] = None,
 ):
-    """运行完整流程"""
+    """运行完整流程 / Run full pipeline"""
     try:
         config = load_config(config_path)
         pipeline = Pipeline(config)
@@ -33,9 +34,9 @@ async def run_pipeline(
 
         console.print("\n" + "=" * 50)
         if result.success:
-            console.print("[bold green]Pipeline 执行成功[/bold green]")
+            console.print(f"[bold green]{t('pipeline_success')}[/bold green]")
         else:
-            console.print("[bold red]Pipeline 执行完成，存在失败用例[/bold red]")
+            console.print(f"[bold red]{t('pipeline_done_with_failures')}[/bold red]")
 
         if result.pr_url:
             console.print(f"\nPR: {result.pr_url}")
@@ -46,7 +47,7 @@ async def run_pipeline(
         console.print(f"[red]{e}[/red]")
         raise SystemExit(1)
     except Exception as e:
-        console.print(f"[red]执行失败: {e}[/red]")
+        console.print(f"[red]{t('exec_failed').format(msg=e)}[/red]")
         import traceback
         traceback.print_exc()
         raise SystemExit(1)

@@ -1,4 +1,4 @@
-"""数据模型"""
+"""数据模型 / Data models"""
 
 from agent_evo.models.config import (
     Config, AgentConfig, LLMConfig, JudgeConfig, OptimizationConfig, GitConfig,
@@ -17,18 +17,18 @@ from agent_evo.models.optimization import OptimizationResult
 from agent_evo.models.import_models import ProductionRecord, ImportResult
 
 __all__ = [
-    # 配置
+    # 配置 / Configuration
     "Config", "AgentConfig", "LLMConfig", "JudgeConfig", "OptimizationConfig", "GitConfig",
     "FactorConfig", "TagPolicyConfig", "MutationConfig", "ImportConfig", "DimensionConfig",
-    # 测试用例
+    # 测试用例 / Test cases
     "TestCase", "TestSuite", "ExpectedOutput", "TestCaseInput",
     "TestCaseTier", "TestCaseSource", "ReviewStatus",
     "JsonPathAssertion", "ToolCallAssertion", "ToolCallConstraints",
-    # 评测结果
+    # 评测结果 / Evaluation results
     "CaseResult", "EvalReport", "CaseStatus", "TagStats",
     "FactorResult", "FactorSummary", "AggregatedDiagnosis",
-    # 优化
+    # 优化 / Optimization
     "OptimizationResult",
-    # 导入
+    # 导入 / Import
     "ProductionRecord", "ImportResult",
 ]

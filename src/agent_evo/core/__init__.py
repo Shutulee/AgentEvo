@@ -1,4 +1,4 @@
-"""核心模块"""
+"""核心模块 / Core modules"""
 
 from agent_evo.core.config import load_config
 from agent_evo.core.pipeline import Pipeline
