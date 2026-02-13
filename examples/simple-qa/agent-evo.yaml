@@ -1,0 +1,45 @@
+# AgentEvo 配置文件 - 简单问答 Demo
+version: "1"
+
+agent:
+  module: "agent"
+  function: "run"
+  prompt_file: "./system_prompt.md"
+
+test_cases: "./tests/*.yaml"
+
+llm:
+  provider: "openai"
+  model: "gpt-4o"
+  api_key: "${OPENAI_API_KEY}"
+
+judge:
+  pass_threshold: 0.7
+  dimensions:
+    - name: "correctness"
+      weight: 0.5
+      description: "回答的正确性"
+    - name: "completeness"
+      weight: 0.3
+      description: "回答的完整性"
+    - name: "clarity"
+      weight: 0.2
+      description: "表达的清晰度"
+
+diagnosis:
+  confidence_threshold: 0.8
+  categories:
+    - id: "PROMPT_ISSUE"
+      description: "提示词缺陷"
+      auto_fix: true
+    - id: "EDGE_CASE"
+      description: "边界场景"
+      auto_fix: true
+
+optimization:
+  max_iterations: 3
+  run_regression: true
+  regression_threshold: 0.9
+
+git:
+  enabled: false

@@ -1,0 +1,37 @@
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "agent-evo"
+version = "0.1.0"
+description = "LLM Agent 自动化评测与优化框架"
+authors = ["Eric Lee"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "agent_evo", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+typer = "^0.9.0"
+rich = "^13.0.0"
+pydantic = "^2.0.0"
+pyyaml = "^6.0"
+openai = "^1.0.0"
+gitpython = "^3.1.0"
+httpx = "^0.25.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0.0"
+pytest-asyncio = "^0.21.0"
+ruff = "^0.1.0"
+
+[tool.poetry.scripts]
+agent-evo = "agent_evo.cli.main:app"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
