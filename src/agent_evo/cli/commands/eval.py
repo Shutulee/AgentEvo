@@ -16,18 +16,14 @@ console = Console()
 async def run_eval(
     config_path: str,
     tags: Optional[list[str]],
-    output: Optional[str]
+    output: Optional[str],
+    tier: Optional[str] = None,
 ):
     """运行评测"""
     try:
-        # 加载配置
         config = load_config(config_path)
-        
-        # 创建 Pipeline
         pipeline = Pipeline(config)
-        
-        # 运行评测
-        report = await pipeline.eval_only(tags=tags)
+        report = await pipeline.eval_only(tags=tags, tier=tier)
         
         # 显示结果
         _print_report(report)

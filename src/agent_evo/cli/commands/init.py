@@ -24,19 +24,32 @@ llm:
   model: "gpt-4o"
   api_key: "${OPENAI_API_KEY}"
 
-# 评判配置
+# 评判配置（因子化评测）
 judge:
   pass_threshold: 0.7
-  dimensions:
-    - name: "correctness"
+  factors:
+    structure:              # 结构正确性（JSON Schema、JSONPath）
+      weight: 1.0
+      fatal: true           # 致命因子：不通过则整条用例失败
+    behavior:               # 行为正确性（工具调用、行为模式）
+      weight: 0.8
+      fatal: false
+    content:                # 内容质量（关键词、语义标准）
       weight: 0.5
-      description: "输出正确性"
-    - name: "completeness"
-      weight: 0.3
-      description: "输出完整性"
-    - name: "format"
-      weight: 0.2
-      description: "格式规范性"
+      fatal: false
+    custom:                 # 自定义校验
+      weight: 1.0
+      fatal: true
+
+# Tag 策略：为不同标签设置独立的通过门禁
+tag_policies:
+  safety:
+    pass_threshold: 1.0
+    fail_fast: true
+    required_for_release: true
+  core:
+    pass_threshold: 0.8
+    required_for_release: true
 
 # 诊断配置
 diagnosis:
@@ -57,6 +70,18 @@ optimization:
   max_iterations: 3
   run_regression: true
   regression_threshold: 0.95
+
+# 变异扩充配置
+mutation:
+  count_per_case: 3
+  auto_review: true
+
+# 导入配置
+import:
+  default_format: "jsonl"
+  auto_refine: true
+  default_tier: "silver"
+  default_tags: ["regression"]
 
 # Git 集成
 git:

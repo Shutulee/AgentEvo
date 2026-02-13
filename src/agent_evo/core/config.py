@@ -74,11 +74,3 @@ def load_config(config_path: Optional[str] = None) -> Config:
     config_dict = _resolve_config_env_vars(config_dict)
     
     return Config(**config_dict)
-
-
-def save_config(config: Config, config_path: str = "agent-evo.yaml") -> None:
-    """保存配置到文件"""
-    config_dict = config.model_dump(exclude_none=True)
-    
-    with open(config_path, "w", encoding="utf-8") as f:
-        yaml.dump(config_dict, f, allow_unicode=True, default_flow_style=False, sort_keys=False)

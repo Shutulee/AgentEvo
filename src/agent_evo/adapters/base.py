@@ -41,11 +41,4 @@ class AgentAdapter(ABC):
         """
         pass
     
-    def get_prompt_content(self) -> Optional[str]:
-        """获取当前提示词内容"""
-        from pathlib import Path
-        
-        prompt_file = self.get_prompt_file()
-        if prompt_file and Path(prompt_file).exists():
-            return Path(prompt_file).read_text(encoding="utf-8")
-        return None
+

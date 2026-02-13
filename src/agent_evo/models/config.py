@@ -1,7 +1,8 @@
 """配置模型"""
 
+import warnings
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class AgentConfig(BaseModel):
@@ -19,42 +20,82 @@ class LLMConfig(BaseModel):
     base_url: Optional[str] = Field(default=None, description="API Base URL")
 
 
+# ─── Deprecated ──────────────────────────────────────────
+
 class DimensionConfig(BaseModel):
-    """评分维度配置"""
+    """评分维度配置（deprecated，保留向后兼容）"""
     name: str
     weight: float = 1.0
     description: str = ""
 
 
+# ─── 新增配置 ────────────────────────────────────────────
+
+class FactorConfig(BaseModel):
+    """因子配置"""
+    weight: float = Field(default=1.0, ge=0.0, description="因子权重")
+    fatal: bool = Field(default=False, description="致命因子：不通过则整条用例失败")
+
+
+class TagPolicyConfig(BaseModel):
+    """基于 tag 的评测策略"""
+    pass_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
+    fail_fast: bool = Field(default=False, description="一条失败即停止")
+    required_for_release: bool = Field(default=False, description="发布阻断")
+    description: str = ""
+
+
+class MutationConfig(BaseModel):
+    """变异扩充配置"""
+    count_per_case: int = Field(default=3, ge=1)
+    auto_review: bool = Field(default=True, description="是否使用 LLM 预审")
+    business_docs: Optional[str] = Field(default=None, description="业务文档路径")
+    hint_directions: list[str] = Field(default_factory=list, description="参考方向提示")
+
+
+class ImportConfig(BaseModel):
+    """导入配置"""
+    default_format: str = "jsonl"
+    auto_refine: bool = True
+    auto_deduplicate: bool = True
+    default_tier: str = "silver"
+    default_tags: list[str] = Field(default_factory=lambda: ["regression"])
+
+
+# ─── 主配置 ──────────────────────────────────────────────
+
 class JudgeConfig(BaseModel):
     """评判配置"""
     pass_threshold: float = Field(default=0.7, ge=0.0, le=1.0, description="通过阈值")
-    dimensions: list[DimensionConfig] = Field(
-        default_factory=lambda: [
-            DimensionConfig(name="correctness", weight=0.5, description="输出正确性"),
-            DimensionConfig(name="completeness", weight=0.3, description="输出完整性"),
-            DimensionConfig(name="format", weight=0.2, description="格式规范性"),
-        ]
+
+    # 新：因子权重
+    factors: dict[str, FactorConfig] = Field(
+        default_factory=lambda: {
+            "content": FactorConfig(weight=1.0, fatal=False),
+            "behavior": FactorConfig(weight=0.8, fatal=False),
+            "structure": FactorConfig(weight=0.5, fatal=False),
+            "custom": FactorConfig(weight=1.0, fatal=True),
+        }
     )
 
+    # deprecated：旧 dimensions 格式，保留向后兼容
+    dimensions: Optional[list[DimensionConfig]] = Field(default=None)
 
-class CategoryConfig(BaseModel):
-    """归因类别配置"""
-    id: str
-    description: str
-    auto_fix: bool = False
-
-
-class DiagnosisConfig(BaseModel):
-    """诊断配置"""
-    confidence_threshold: float = Field(default=0.8, ge=0.0, le=1.0, description="置信度阈值")
-    categories: list[CategoryConfig] = Field(
-        default_factory=lambda: [
-            CategoryConfig(id="PROMPT_ISSUE", description="提示词缺陷", auto_fix=True),
-            CategoryConfig(id="CONTEXT_ISSUE", description="上下文/知识不足", auto_fix=False),
-            CategoryConfig(id="EDGE_CASE", description="边界场景", auto_fix=True),
-        ]
-    )
+    @model_validator(mode="after")
+    def migrate_dimensions_to_factors(self) -> "JudgeConfig":
+        """如果用户配置了旧的 dimensions，自动映射为 content 因子并打 warning"""
+        if self.dimensions is not None:
+            warnings.warn(
+                "judge.dimensions 已废弃，请迁移到 judge.factors 格式。"
+                "旧的 dimensions 已自动映射为 content 因子。",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            # 旧 dimensions 的加权总权重映射到 content 因子
+            total_weight = sum(d.weight for d in self.dimensions)
+            if total_weight > 0:
+                self.factors["content"] = FactorConfig(weight=total_weight, fatal=False)
+        return self
 
 
 class OptimizationConfig(BaseModel):
@@ -80,6 +121,12 @@ class Config(BaseModel):
     test_cases: str = Field(default="./tests/*.yaml", description="测试用例路径，支持 glob")
     llm: LLMConfig = Field(default_factory=LLMConfig)
     judge: JudgeConfig = Field(default_factory=JudgeConfig)
-    diagnosis: DiagnosisConfig = Field(default_factory=DiagnosisConfig)
     optimization: OptimizationConfig = Field(default_factory=OptimizationConfig)
     git: GitConfig = Field(default_factory=GitConfig)
+
+    # 新增配置节（均可选，不配不影响现有功能）
+    mutation: MutationConfig = Field(default_factory=MutationConfig)
+    import_config: Optional[ImportConfig] = Field(default=None, alias="import")
+    tag_policies: dict[str, TagPolicyConfig] = Field(default_factory=dict)
+
+    model_config = {"populate_by_name": True}
