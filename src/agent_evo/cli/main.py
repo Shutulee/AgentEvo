@@ -1,12 +1,18 @@
 """AgentEvo CLI 主入口 / AgentEvo CLI main entry"""
 
 import asyncio
+import os
+from pathlib import Path
 from typing import Optional
 
 import typer
+from dotenv import load_dotenv
 from rich.console import Console
 
 from agent_evo import __version__
+
+# 自动加载开发者项目目录下的 .env 文件 / Auto-load .env from developer's project directory
+load_dotenv(dotenv_path=Path.cwd() / ".env", override=False)
 
 app = typer.Typer(
     name="agent-evo",

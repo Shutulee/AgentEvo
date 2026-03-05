@@ -1,5 +1,6 @@
 # AgentEvo 配置文件 - 简单问答 Demo
 version: "1"
+language: "zh"
 
 agent:
   module: "agent"
@@ -10,8 +11,9 @@ test_cases: "./tests/*.yaml"
 
 llm:
   provider: "openai"
-  model: "gpt-4o"
+  model: "glm-4-flash"
   api_key: "${OPENAI_API_KEY}"
+  base_url: "https://open.bigmodel.cn/api/paas/v4"
 
 # 评判配置
 judge:

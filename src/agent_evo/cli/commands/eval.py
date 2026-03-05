@@ -1,6 +1,7 @@
 """eval 命令 / eval command"""
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -30,13 +31,25 @@ async def run_eval(
         _print_report(report)
 
         # 保存报告 / Save report
-        if output:
-            output_path = Path(output)
-            output_path.write_text(
-                report.model_dump_json(indent=2),
-                encoding="utf-8"
-            )
-            console.print(f"\n{t('report_saved').format(path=output)}")
+        report_dir = Path("reports")
+        report_dir.mkdir(exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # 确定输出路径 / Determine output paths
+        json_path = Path(output) if output else report_dir / f"eval_{timestamp}.json"
+        html_path = report_dir / f"eval_{timestamp}.html"
+
+        # 保存 JSON 报告 / Save JSON report
+        report_json = report.model_dump_json(indent=2)
+        json_path.write_text(report_json, encoding="utf-8")
+        console.print(f"\n📄 JSON {t('report_saved').format(path=str(json_path))}")
+
+        # 保存 HTML 报告 / Save HTML report
+        from agent_evo.cli.commands.report import _generate_html_report
+        report_data = json.loads(report_json)
+        html_content = _generate_html_report(report_data)
+        html_path.write_text(html_content, encoding="utf-8")
+        console.print(f"🌐 HTML {t('report_saved').format(path=str(html_path))}")
 
     except FileNotFoundError as e:
         console.print(f"[red]❌ {e}[/red]")

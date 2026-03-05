@@ -84,6 +84,24 @@ class Generator:
 
         return cases
 
+    def _build_context(self, case: TestCase) -> dict[str, Any]:
+        """构建上下文，自动注入 LLM 配置 / Build context with LLM config injected"""
+        context = case.input_context or {}
+
+        # 将 agent-evo.yaml 中的 llm 配置注入 context
+        # 这样 Agent 函数可以直接从 context 获取 LLM 配置，无需硬编码
+        if self.config.llm:
+            llm_config = {
+                "provider": self.config.llm.provider,
+                "model": self.config.llm.model,
+                "api_key": self.config.llm.api_key,
+            }
+            if self.config.llm.base_url:
+                llm_config["base_url"] = self.config.llm.base_url
+            context["llm"] = llm_config
+
+        return context
+
     async def run_case(self, case: TestCase) -> GeneratorResult:
         """运行单个测试用例 / Run a single test case"""
         start_time = time.time()
@@ -91,7 +109,7 @@ class Generator:
         try:
             output = await self.adapter.invoke(
                 input=case.input_query,
-                context=case.input_context
+                context=self._build_context(case)
             )
             execution_time_ms = int((time.time() - start_time) * 1000)
 
