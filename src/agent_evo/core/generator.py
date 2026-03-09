@@ -12,6 +12,7 @@ import yaml
 from agent_evo.models import Config, TestCase, TestSuite
 from agent_evo.adapters.base import AgentAdapter
 from agent_evo.adapters.callable import CallableAdapter
+from agent_evo.adapters.http import HttpAdapter
 from agent_evo.utils.i18n import t
 
 
@@ -35,12 +36,42 @@ class Generator:
 
     def _create_adapter(self) -> AgentAdapter:
         """创建 Agent 适配器 / Create Agent adapter"""
-        # 动态加载用户的 Agent 模块 / Dynamically load user's Agent module
+        agent_type = self.config.agent.type
+
+        if agent_type == "http":
+            return self._create_http_adapter()
+        else:
+            return self._create_callable_adapter()
+
+    def _create_http_adapter(self) -> AgentAdapter:
+        """创建 HTTP 适配器 / Create HTTP adapter"""
+        http_config = self.config.agent.http
+
+        prompt_file = None
+        if self.config.agent.prompt_file:
+            prompt_file = str(self.project_dir / self.config.agent.prompt_file)
+
+        return HttpAdapter(
+            url=http_config.url,
+            method=http_config.method,
+            headers=http_config.headers,
+            body_template=http_config.body,
+            response_path=http_config.response_path,
+            stream=http_config.stream,
+            stream_event_field=http_config.stream_event_field,
+            stream_content_field=http_config.stream_content_field,
+            stream_done_event=http_config.stream_done_event,
+            stream_text_events=http_config.stream_text_events,
+            timeout=http_config.timeout,
+            prompt_file=prompt_file,
+        )
+
+    def _create_callable_adapter(self) -> AgentAdapter:
+        """创建 Callable 适配器 / Create Callable adapter"""
         module_path = self.config.agent.module
         func_name = self.config.agent.function
 
         try:
-            # 尝试相对于项目目录导入 / Try importing relative to project directory
             import sys
             sys.path.insert(0, str(self.project_dir))
 
@@ -58,29 +89,60 @@ class Generator:
                 t("agent_load_fail").format(path=f"{module_path}.{func_name}", err=e)
             )
 
-    def load_test_cases(self, tags: Optional[list[str]] = None) -> list[TestCase]:
-        """加载测试用例 / Load test cases"""
-        pattern = self.project_dir / self.config.test_cases
-        files = glob(str(pattern), recursive=True)
+    def load_test_cases(
+        self,
+        tags: Optional[list[str]] = None,
+        include_silver: bool = False,
+    ) -> list[TestCase]:
+        """加载测试用例（默认只加载黄金集，可选包含白银集）
+        Load test cases (gold only by default, optionally include silver)
+
+        黄金集路径由 config.test_cases 指定，白银集由 config.silver_test_cases 指定。
+        Gold set path from config.test_cases, silver set from config.silver_test_cases.
+        只有 review_status == approved 的用例才参与评测。
+        Only cases with review_status == approved are included in evaluation.
+        """
+        from agent_evo.models.test_case import ReviewStatus, TestCaseTier
+
+        # 收集需要扫描的 glob 路径 / Collect glob patterns to scan
+        patterns = [str(self.project_dir / self.config.test_cases)]
+        if include_silver:
+            patterns.append(str(self.project_dir / self.config.silver_test_cases))
 
         cases = []
-        for file_path in files:
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f)
+        for pattern in patterns:
+            files = glob(str(pattern), recursive=True)
+            # 根据路径判断 tier / Determine tier from pattern
+            is_silver_pattern = (pattern == str(self.project_dir / self.config.silver_test_cases))
 
-            suite = TestSuite(**data)
-            for case_data in suite.cases:
-                if isinstance(case_data, dict):
-                    case = TestCase(**case_data)
-                else:
-                    case = case_data
+            for file_path in files:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    data = yaml.safe_load(f)
 
-                # 按 tag 过滤 / Filter by tag
-                if tags:
-                    if any(tag in case.tags for tag in tags):
+                if not data or "cases" not in data:
+                    continue
+
+                suite = TestSuite(**data)
+                for case_data in suite.cases:
+                    if isinstance(case_data, dict):
+                        case = TestCase(**case_data)
+                    else:
+                        case = case_data
+
+                    # 根据目录自动设置 tier / Auto-set tier based on directory
+                    if is_silver_pattern:
+                        case.tier = TestCaseTier.SILVER
+
+                    # 跳过未审核通过的用例 / Skip unapproved cases
+                    if case.review_status != ReviewStatus.APPROVED:
+                        continue
+
+                    # 按 tag 过滤 / Filter by tag
+                    if tags:
+                        if any(tag in case.tags for tag in tags):
+                            cases.append(case)
+                    else:
                         cases.append(case)
-                else:
-                    cases.append(case)
 
         return cases
 

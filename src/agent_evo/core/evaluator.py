@@ -1,5 +1,6 @@
 """因子化评测引擎 / Factor-based evaluation engine"""
 
+import asyncio
 from typing import Optional
 
 from agent_evo.models import (
@@ -152,13 +153,35 @@ class Evaluator:
 
     # ── 批量评测 / Batch evaluation ──────────────────────────
 
-    async def evaluate_all(self, results: list[GeneratorResult]) -> EvalReport:
-        """批量评测所有用例，生成统一报告
-        Batch evaluate all cases and generate unified report"""
-        case_results = []
-        for result in results:
-            case_result = await self.evaluate_case(result)
-            case_results.append(case_result)
+    async def evaluate_all(
+        self, results: list[GeneratorResult], concurrency: int = 5,
+    ) -> EvalReport:
+        """并发评测所有用例，生成统一报告
+        Concurrently evaluate all cases and generate unified report"""
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def eval_with_semaphore(result: GeneratorResult) -> CaseResult:
+            async with semaphore:
+                return await self.evaluate_case(result)
+
+        eval_tasks = [eval_with_semaphore(r) for r in results]
+        raw_results = await asyncio.gather(*eval_tasks, return_exceptions=True)
+
+        # 处理可能的异常 / Handle possible exceptions
+        case_results: list[CaseResult] = []
+        for i, res in enumerate(raw_results):
+            if isinstance(res, Exception):
+                case = results[i].case
+                case_results.append(CaseResult(
+                    case_id=case.id, case_name=case.name, status=CaseStatus.ERROR,
+                    input=case.input_query, output=results[i].output,
+                    expected=case.expected.model_dump(), score=0.0,
+                    summary=t("exec_error").format(err=str(res)),
+                    execution_time_ms=results[i].execution_time_ms,
+                    error_message=str(res), tags=case.tags,
+                ))
+            else:
+                case_results.append(res)
 
         # 统计 / Statistics
         total = len(case_results)

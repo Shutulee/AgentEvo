@@ -204,7 +204,219 @@ class CoreJudgeFactor(EvaluationFactor):
         if structure_checks:
             checks["structure"] = structure_checks
 
+        # ── behavior 维度的额外校验 / behavior dimension extra checks ──
+        behavior_checks: list[tuple[str, float, str]] = []
+
+        if expected.required_tool_calls:
+            behavior_checks.extend(self._check_required_tool_calls(output, expected.required_tool_calls))
+
+        if expected.tool_call_constraints:
+            behavior_checks.extend(self._check_tool_call_constraints(output, expected.tool_call_constraints))
+
+        if behavior_checks:
+            checks["behavior"] = behavior_checks
+
         return checks
+
+    # ── behavior 维度校验方法 / Behavior dimension check methods ──
+
+    @staticmethod
+    def _extract_tool_calls(output: str) -> list[dict[str, Any]]:
+        """从输出中提取工具调用信息 / Extract tool call info from output.
+
+        支持多种常见格式 / Supports multiple common formats:
+        1. JSON 数组中的 tool_call 对象 / tool_call objects in JSON array
+        2. function_call 格式 / function_call format
+        3. <tool_call> XML 标签格式 / <tool_call> XML tag format
+        4. Action/Action Input 文本格式 / Action/Action Input text format
+        """
+        tool_calls: list[dict[str, Any]] = []
+
+        # 尝试解析为 JSON（可能是包含 tool_calls 的对象或数组）
+        # Try parsing as JSON (may be object or array with tool_calls)
+        try:
+            parsed = json.loads(output)
+            if isinstance(parsed, dict):
+                # OpenAI 格式: {"tool_calls": [...]}
+                if "tool_calls" in parsed:
+                    for tc in parsed["tool_calls"]:
+                        func = tc.get("function", tc)
+                        name = func.get("name", "")
+                        args = func.get("arguments", {})
+                        if isinstance(args, str):
+                            try:
+                                args = json.loads(args)
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+                        tool_calls.append({"name": name, "arguments": args})
+                # 单个 function_call: {"function_call": {"name": ..., "arguments": ...}}
+                elif "function_call" in parsed:
+                    fc = parsed["function_call"]
+                    args = fc.get("arguments", {})
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                    tool_calls.append({"name": fc.get("name", ""), "arguments": args})
+            elif isinstance(parsed, list):
+                for item in parsed:
+                    if isinstance(item, dict) and ("name" in item or "function" in item):
+                        func = item.get("function", item)
+                        name = func.get("name", "")
+                        args = func.get("arguments", {})
+                        if isinstance(args, str):
+                            try:
+                                args = json.loads(args)
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+                        tool_calls.append({"name": name, "arguments": args})
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        if tool_calls:
+            return tool_calls
+
+        # <tool_call> XML 标签格式 / <tool_call> XML tag format
+        xml_pattern = re.findall(r'<tool_call>\s*(\{.*?\})\s*</tool_call>', output, re.DOTALL)
+        for match in xml_pattern:
+            try:
+                tc = json.loads(match)
+                tool_calls.append({
+                    "name": tc.get("name", tc.get("tool", "")),
+                    "arguments": tc.get("arguments", tc.get("params", tc.get("parameters", {}))),
+                })
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        if tool_calls:
+            return tool_calls
+
+        # Action/Action Input 文本格式 / Action/Action Input text format
+        action_pattern = re.findall(
+            r'Action:\s*(\S+)\s*\nAction Input:\s*(\{.*?\})(?:\n|$)',
+            output, re.DOTALL,
+        )
+        for action_name, action_input in action_pattern:
+            try:
+                args = json.loads(action_input)
+            except (json.JSONDecodeError, TypeError):
+                args = {"raw": action_input}
+            tool_calls.append({"name": action_name, "arguments": args})
+
+        return tool_calls
+
+    def _check_required_tool_calls(
+        self, output: str, required: list,
+    ) -> list[tuple[str, float, str]]:
+        """校验必须出现的工具调用 / Check required tool calls"""
+        results: list[tuple[str, float, str]] = []
+        actual_calls = self._extract_tool_calls(output)
+        actual_names = [tc["name"] for tc in actual_calls]
+
+        for req in required:
+            tool_name = req.tool_name
+            # 检查工具是否被调用 / Check if tool was called
+            if tool_name not in actual_names:
+                results.append((
+                    f"required_tool:{tool_name}",
+                    0.0,
+                    t("tool_not_called").format(tool=tool_name),
+                ))
+                continue
+
+            # 找到该工具的调用记录 / Find the call record for this tool
+            matched_call = next(tc for tc in actual_calls if tc["name"] == tool_name)
+            call_args = matched_call.get("arguments", {})
+
+            # 检查必需参数 / Check required params
+            if req.required_params and isinstance(call_args, dict):
+                missing = []
+                wrong = []
+                for param_key, param_val in req.required_params.items():
+                    if param_key not in call_args:
+                        missing.append(param_key)
+                    elif call_args[param_key] != param_val:
+                        wrong.append(f"{param_key}: expected {param_val!r}, got {call_args[param_key]!r}")
+
+                if missing or wrong:
+                    parts = []
+                    if missing:
+                        parts.append(t("tool_missing_params").format(tool=tool_name, params=missing))
+                    if wrong:
+                        parts.append(t("tool_wrong_params").format(tool=tool_name, details="; ".join(wrong)))
+                    results.append((f"required_tool:{tool_name}", 0.0, "; ".join(parts)))
+                else:
+                    results.append((f"required_tool:{tool_name}", 1.0, ""))
+            else:
+                results.append((f"required_tool:{tool_name}", 1.0, ""))
+
+        return results
+
+    def _check_tool_call_constraints(
+        self, output: str, constraints,
+    ) -> list[tuple[str, float, str]]:
+        """校验工具调用链约束 / Check tool call chain constraints"""
+        results: list[tuple[str, float, str]] = []
+        actual_calls = self._extract_tool_calls(output)
+        actual_names = [tc["name"] for tc in actual_calls]
+
+        # 禁止调用的工具 / Forbidden tools
+        if constraints.forbidden_tools:
+            violations = [t_name for t_name in constraints.forbidden_tools if t_name in actual_names]
+            if violations:
+                results.append((
+                    "forbidden_tools",
+                    0.0,
+                    t("tool_forbidden_called").format(tools=violations),
+                ))
+            else:
+                results.append(("forbidden_tools", 1.0, ""))
+
+        # 最大调用次数 / Max call count
+        if constraints.max_calls is not None:
+            if len(actual_calls) > constraints.max_calls:
+                results.append((
+                    "max_calls",
+                    0.0,
+                    t("tool_max_calls_exceeded").format(max=constraints.max_calls, actual=len(actual_calls)),
+                ))
+            else:
+                results.append(("max_calls", 1.0, ""))
+
+        # 必须出现的调用序列 / Required call sequence
+        if constraints.required_sequence:
+            if constraints.ordered:
+                # 严格顺序：required_sequence 必须是 actual_names 的子序列
+                # Strict order: required_sequence must be a subsequence of actual_names
+                idx = 0
+                for name in actual_names:
+                    if idx < len(constraints.required_sequence) and name == constraints.required_sequence[idx]:
+                        idx += 1
+                if idx == len(constraints.required_sequence):
+                    results.append(("required_sequence", 1.0, ""))
+                else:
+                    results.append((
+                        "required_sequence",
+                        0.0,
+                        t("tool_sequence_mismatch").format(
+                            expected=constraints.required_sequence,
+                            actual=actual_names,
+                        ),
+                    ))
+            else:
+                # 非严格顺序：只要求全部出现 / Unordered: just require all present
+                missing = [s for s in constraints.required_sequence if s not in actual_names]
+                if missing:
+                    results.append((
+                        "required_sequence",
+                        0.0,
+                        t("tool_sequence_missing").format(tools=missing),
+                    ))
+                else:
+                    results.append(("required_sequence", 1.0, ""))
+
+        return results
 
     # ── 工具方法 / Utility methods ──
 

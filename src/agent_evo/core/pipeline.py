@@ -61,6 +61,7 @@ class Pipeline:
         create_pr: bool = False,
         tags: Optional[list[str]] = None,
         tier: Optional[str] = None,
+        include_silver: bool = False,
         dry_run: bool = False,
     ) -> PipelineResult:
         """四阶段批量流程 / Four-stage batch workflow"""
@@ -68,7 +69,7 @@ class Pipeline:
 
         # ── Phase A：批量执行 + 评测（因子化，归因即时完成）──
         # ── Phase A: Batch execution + evaluation (factor-based, attribution done in-place) ──
-        test_cases = self.generator.load_test_cases(tags=tags)
+        test_cases = self.generator.load_test_cases(tags=tags, include_silver=include_silver)
         if tier:
             test_cases = [c for c in test_cases if c.tier.value == tier]
         console.print(t("loaded_cases").format(n=len(test_cases)))
@@ -132,9 +133,14 @@ class Pipeline:
         eval_report.optimization = optimization_result
         return PipelineResult(eval_report=eval_report, optimization=optimization_result, pr_url=pr_url)
 
-    async def eval_only(self, tags: Optional[list[str]] = None, tier: Optional[str] = None) -> EvalReport:
+    async def eval_only(
+        self,
+        tags: Optional[list[str]] = None,
+        tier: Optional[str] = None,
+        include_silver: bool = False,
+    ) -> EvalReport:
         """只运行评测，不优化 / Run evaluation only, no optimization"""
-        test_cases = self.generator.load_test_cases(tags=tags)
+        test_cases = self.generator.load_test_cases(tags=tags, include_silver=include_silver)
         if tier:
             test_cases = [c for c in test_cases if c.tier.value == tier]
         results = await self.generator.run_all(test_cases)

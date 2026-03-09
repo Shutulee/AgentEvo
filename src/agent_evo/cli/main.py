@@ -51,12 +51,28 @@ def eval_cmd(
     config: str = typer.Option("agent-evo.yaml", "-c", "--config", help="配置文件路径 / Config file path"),
     tags: Optional[str] = typer.Option(None, "-t", "--tags", help="只运行指定 tag（逗号分隔）/ Run specified tags only (comma separated)"),
     tier: Optional[str] = typer.Option(None, "--tier", help="只运行指定层级 / Run specified tier only: gold/silver"),
+    include_silver: bool = typer.Option(False, "--include-silver", help="同时包含白银测评集 / Include silver test cases"),
     output: Optional[str] = typer.Option(None, "-o", "--output", help="报告输出路径 / Report output path"),
 ):
     """运行评测（不优化）/ Run evaluation (no optimization)"""
     from agent_evo.cli.commands.eval import run_eval
     tag_list = tags.split(",") if tags else None
-    asyncio.run(run_eval(config, tag_list, output, tier))
+    asyncio.run(run_eval(config, tag_list, output, tier, include_silver))
+
+
+@app.command()
+def auto(
+    config: str = typer.Option("agent-evo.yaml", "-c", "--config", help="配置文件路径 / Config file path"),
+    tags: Optional[str] = typer.Option(None, "-t", "--tags", help="只运行指定 tag（逗号分隔）/ Run specified tags only (comma separated)"),
+    tier: Optional[str] = typer.Option(None, "--tier", help="只运行指定层级 / Run specified tier only: gold/silver"),
+    include_silver: bool = typer.Option(False, "--include-silver", help="同时包含白银测评集 / Include silver test cases"),
+    pr: bool = typer.Option(False, "--pr", help="创建 PR / Create PR"),
+    output: Optional[str] = typer.Option(None, "-o", "--output", help="报告输出路径 / Report output path"),
+):
+    """一站式评测 + 自动优化（推荐）/ One-stop evaluation + auto optimization (recommended)"""
+    from agent_evo.cli.commands.auto import run_auto
+    tag_list = tags.split(",") if tags else None
+    asyncio.run(run_auto(config, tag_list, tier, include_silver, pr, output))
 
 
 @app.command()
@@ -64,6 +80,7 @@ def run(
     config: str = typer.Option("agent-evo.yaml", "-c", "--config", help="配置文件路径 / Config file path"),
     tags: Optional[str] = typer.Option(None, "-t", "--tags", help="只运行指定 tag（逗号分隔）/ Run specified tags only (comma separated)"),
     tier: Optional[str] = typer.Option(None, "--tier", help="只运行指定层级 / Run specified tier only: gold/silver"),
+    include_silver: bool = typer.Option(False, "--include-silver", help="同时包含白银测评集 / Include silver test cases"),
     fix: bool = typer.Option(False, "--fix", help="自动修复失败用例 / Auto-fix failed cases"),
     pr: bool = typer.Option(False, "--pr", help="创建 PR / Create PR"),
     dry_run: bool = typer.Option(False, "--dry-run", help="预览模式，不实际修改 / Preview mode, no actual modifications"),
@@ -71,7 +88,7 @@ def run(
     """运行完整流程（评测 + 优化 + PR）/ Run full pipeline (eval + optimize + PR)"""
     from agent_evo.cli.commands.run import run_pipeline
     tag_list = tags.split(",") if tags else None
-    asyncio.run(run_pipeline(config, tag_list, fix, pr, dry_run, tier))
+    asyncio.run(run_pipeline(config, tag_list, fix, pr, dry_run, tier, include_silver))
 
 
 @app.command()
@@ -89,7 +106,7 @@ def report(
 def mutate(
     seed: str = typer.Option(..., "--seed", help="种子用例 YAML 文件路径 / Seed case YAML file path"),
     count: int = typer.Option(3, "--count", help="每条种子生成数量 / Number of mutations per seed"),
-    output: str = typer.Option("./tests/silver_generated.yaml", "-o", "--output", help="输出文件路径 / Output file path"),
+    output: str = typer.Option("./tests/silver/generated.yaml", "-o", "--output", help="输出文件路径 / Output file path"),
     config: str = typer.Option("agent-evo.yaml", "-c", "--config", help="配置文件路径 / Config file path"),
 ):
     """基于黄金集变异扩充测评集 / Expand test suite via mutation from gold set"""
@@ -111,15 +128,27 @@ def review(
 
 @app.command(name="import")
 def import_cmd(
-    file: str = typer.Option(..., "--file", help="导入文件路径 / Import file path"),
+    file: Optional[str] = typer.Option(None, "--file", help="导入文件路径 / Import file path"),
+    source: Optional[str] = typer.Option(None, "--source", help="数据源名称（对应 import_sources 配置）/ Source name (from import_sources config)"),
     format: str = typer.Option("jsonl", "--format", help="文件格式 / File format: jsonl/csv/yaml"),
-    output: str = typer.Option("./tests/production.yaml", "-o", "--output", help="输出文件路径 / Output file path"),
+    output: str = typer.Option("./tests/silver/production.yaml", "-o", "--output", help="输出文件路径 / Output file path"),
     auto_refine: bool = typer.Option(True, "--auto-refine/--no-auto-refine", help="自动提炼为标准 TestCase / Auto-refine to standard TestCase"),
     config: str = typer.Option("agent-evo.yaml", "-c", "--config", help="配置文件路径 / Config file path"),
 ):
-    """从线上数据导入测评集 / Import test cases from production data"""
-    from agent_evo.cli.commands.import_cmd import run_import
-    asyncio.run(run_import(config, file, format, output, auto_refine))
+    """从线上数据导入测评集 / Import test cases from production data
+
+    两种模式 / Two modes:
+      --file  从本地文件导入 / Import from local file
+      --source  从 HTTP API 数据源拉取 / Fetch from HTTP API source
+    """
+    from agent_evo.cli.commands.import_cmd import run_import, run_import_from_source
+    if source:
+        asyncio.run(run_import_from_source(config, source, output, auto_refine))
+    elif file:
+        asyncio.run(run_import(config, file, format, output, auto_refine))
+    else:
+        console.print("[red]请指定 --file 或 --source / Please specify --file or --source[/red]")
+        raise typer.Exit(1)
 
 
 @app.command(name="gate-check")

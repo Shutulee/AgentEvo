@@ -1,6 +1,7 @@
 """提示词优化器 / Prompt optimizer"""
 
 import re
+import shutil
 from pathlib import Path
 from typing import Optional, Union
 
@@ -44,7 +45,14 @@ Output the optimized prompt wrapped in <optimized_prompt> and </optimized_prompt
         test_cases: list[TestCase],
         aggregated_diagnosis: Optional[AggregatedDiagnosis] = None,
     ) -> OptimizationResult:
-        """根据聚合归因结果优化提示词 / Optimize prompt based on aggregated diagnosis"""
+        """根据聚合归因结果优化提示词 / Optimize prompt based on aggregated diagnosis
+
+        采用「先验证后写入」模式，确保原子性：
+        Uses "validate-then-write" pattern for atomicity:
+        1. 生成新 prompt 后先用临时文件做回归验证
+        2. 验证通过后才写入正式文件
+        3. 始终保留 .bak 备份，进程崩溃时可恢复
+        """
         prompt_file = self.project_dir / self.config.agent.prompt_file
 
         if not prompt_file.exists():
@@ -53,64 +61,104 @@ Output the optimized prompt wrapped in <optimized_prompt> and </optimized_prompt
         original_prompt = prompt_file.read_text(encoding="utf-8")
         current_prompt = original_prompt
 
+        # 创建备份文件，防止进程崩溃丢失原始 prompt
+        # Create backup file to prevent losing original prompt on crash
+        backup_file = prompt_file.with_suffix(prompt_file.suffix + ".bak")
+        shutil.copy2(prompt_file, backup_file)
+
         # 构建诊断信息 / Build diagnosis info
         diagnoses_str = self._build_diagnoses_str(aggregated_diagnosis)
 
-        for iteration in range(self.config.optimization.max_iterations):
-            prompt = self.optimize_prompt.format(
-                current_prompt=current_prompt,
-                diagnoses=diagnoses_str,
-            )
+        try:
+            for iteration in range(self.config.optimization.max_iterations):
+                prompt = self.optimize_prompt.format(
+                    current_prompt=current_prompt,
+                    diagnoses=diagnoses_str,
+                )
 
-            try:
-                response = await self.llm.chat(messages=[{"role": "user", "content": prompt}])
-                new_prompt = self._extract_optimized_prompt(response)
+                try:
+                    response = await self.llm.chat(messages=[{"role": "user", "content": prompt}])
+                    new_prompt = self._extract_optimized_prompt(response)
 
-                if not new_prompt:
-                    return OptimizationResult(
-                        success=False, iterations=iteration + 1,
-                        error_message="Cannot extract optimized prompt from LLM response",
-                    )
+                    if not new_prompt:
+                        # 提取失败时恢复原始 prompt / Restore original on extraction failure
+                        prompt_file.write_text(original_prompt, encoding="utf-8")
+                        return OptimizationResult(
+                            success=False, iterations=iteration + 1,
+                            error_message="Cannot extract optimized prompt from LLM response",
+                        )
 
-                # 写入文件 / Write to file
-                prompt_file.write_text(new_prompt, encoding="utf-8")
+                    # 回归测试 / Regression test
+                    if self.config.optimization.run_regression:
+                        from agent_evo.core.generator import Generator
+                        from agent_evo.core.evaluator import Evaluator
 
-                # 回归测试 / Regression test
-                if self.config.optimization.run_regression:
-                    from agent_evo.core.generator import Generator
-                    from agent_evo.core.evaluator import Evaluator
+                        # 先写入新 prompt 用于回归验证
+                        # Write new prompt for regression validation
+                        prompt_file.write_text(new_prompt, encoding="utf-8")
 
-                    generator = Generator(self.config, self.project_dir)
-                    evaluator = Evaluator(self.config)
-                    generator.adapter = generator._create_adapter()
+                        generator = Generator(self.config, self.project_dir)
+                        evaluator = Evaluator(self.config)
+                        generator.adapter = generator._create_adapter()
 
-                    results = await generator.run_all(test_cases)
-                    report = await evaluator.evaluate_all(results)
+                        results = await generator.run_all(test_cases)
+                        report = await evaluator.evaluate_all(results)
 
-                    if report.pass_rate >= self.config.optimization.regression_threshold:
+                        if report.pass_rate >= self.config.optimization.regression_threshold:
+                            # 验证通过，新 prompt 已在文件中，清理备份
+                            # Validation passed, new prompt is in file, clean up backup
+                            self._cleanup_backup(backup_file)
+                            return OptimizationResult(
+                                success=True, iterations=iteration + 1,
+                                original_prompt=original_prompt, optimized_prompt=new_prompt,
+                                regression_pass_rate=report.pass_rate,
+                            )
+
+                        # 回归未通过，恢复原始 prompt 后继续迭代
+                        # Regression failed, restore original prompt before continuing
+                        prompt_file.write_text(original_prompt, encoding="utf-8")
+                        current_prompt = new_prompt
+                    else:
+                        # 不做回归，直接写入并返回
+                        # No regression, write and return directly
+                        prompt_file.write_text(new_prompt, encoding="utf-8")
+                        self._cleanup_backup(backup_file)
                         return OptimizationResult(
                             success=True, iterations=iteration + 1,
                             original_prompt=original_prompt, optimized_prompt=new_prompt,
-                            regression_pass_rate=report.pass_rate,
                         )
-                    current_prompt = new_prompt
-                else:
-                    return OptimizationResult(
-                        success=True, iterations=iteration + 1,
-                        original_prompt=original_prompt, optimized_prompt=new_prompt,
-                    )
-            except Exception as e:
-                prompt_file.write_text(original_prompt, encoding="utf-8")
-                return OptimizationResult(success=False, iterations=iteration + 1, error_message=str(e))
+                except Exception as e:
+                    # 单次迭代异常，恢复原始 prompt
+                    # Single iteration exception, restore original prompt
+                    prompt_file.write_text(original_prompt, encoding="utf-8")
+                    self._cleanup_backup(backup_file)
+                    return OptimizationResult(success=False, iterations=iteration + 1, error_message=str(e))
 
-        # 达到最大迭代次数，恢复原始提示词
-        # Max iterations reached, restore original prompt
-        prompt_file.write_text(original_prompt, encoding="utf-8")
-        return OptimizationResult(
-            success=False, iterations=self.config.optimization.max_iterations,
-            original_prompt=original_prompt, optimized_prompt=current_prompt,
-            error_message="Max iterations reached, original prompt restored",
-        )
+            # 达到最大迭代次数，确保恢复原始提示词
+            # Max iterations reached, ensure original prompt is restored
+            prompt_file.write_text(original_prompt, encoding="utf-8")
+            self._cleanup_backup(backup_file)
+            return OptimizationResult(
+                success=False, iterations=self.config.optimization.max_iterations,
+                original_prompt=original_prompt, optimized_prompt=current_prompt,
+                error_message="Max iterations reached, original prompt restored",
+            )
+        except Exception:
+            # 任何未预期的异常，确保恢复原始 prompt
+            # Any unexpected exception, ensure original prompt is restored
+            if backup_file.exists():
+                shutil.copy2(backup_file, prompt_file)
+            self._cleanup_backup(backup_file)
+            raise
+
+    @staticmethod
+    def _cleanup_backup(backup_file: Path) -> None:
+        """清理备份文件 / Clean up backup file"""
+        try:
+            if backup_file.exists():
+                backup_file.unlink()
+        except OSError:
+            pass
 
     @staticmethod
     def _build_diagnoses_str(

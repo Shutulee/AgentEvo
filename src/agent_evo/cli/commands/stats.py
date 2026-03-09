@@ -18,24 +18,33 @@ console = Console()
 
 
 def _load_cases_only(config) -> list[TestCase]:
-    """只加载测试用例，不初始化 Agent（stats 不需要执行 Agent）
-    Load test cases only, no Agent initialization (stats doesn't need Agent execution)"""
-    pattern = str(Path.cwd() / config.test_cases)
-    files = glob(pattern, recursive=True)
+    """加载所有测试用例（gold + silver），不初始化 Agent
+    Load all test cases (gold + silver), no Agent initialization"""
+    from agent_evo.models.test_case import TestCaseTier
 
     cases = []
-    for file_path in files:
-        with open(file_path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-        if not data or "cases" not in data:
-            continue
-        suite = TestSuite(**data)
-        for case_data in suite.cases:
-            if isinstance(case_data, dict):
-                case = TestCase(**case_data)
-            else:
-                case = case_data
-            cases.append(case)
+    # 扫描 gold 和 silver 两个路径 / Scan both gold and silver paths
+    patterns = [
+        (str(Path.cwd() / config.test_cases), TestCaseTier.GOLD),
+        (str(Path.cwd() / config.silver_test_cases), TestCaseTier.SILVER),
+    ]
+    for pattern, default_tier in patterns:
+        files = glob(pattern, recursive=True)
+        for file_path in files:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            if not data or "cases" not in data:
+                continue
+            suite = TestSuite(**data)
+            for case_data in suite.cases:
+                if isinstance(case_data, dict):
+                    case = TestCase(**case_data)
+                else:
+                    case = case_data
+                # 根据目录自动设置 tier / Auto-set tier from directory
+                if default_tier == TestCaseTier.SILVER:
+                    case.tier = TestCaseTier.SILVER
+                cases.append(case)
     return cases
 
 

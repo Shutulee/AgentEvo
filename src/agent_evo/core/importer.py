@@ -4,13 +4,13 @@ import csv
 import json
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 import yaml
 
 from agent_evo.models import Config, TestCase
 from agent_evo.models.test_case import TestCaseSource, TestCaseTier, ReviewStatus, ExpectedOutput
-from agent_evo.models.import_models import ProductionRecord, ImportResult
+from agent_evo.models.import_models import ProductionRecord, ImportResult, APISourceConfig
 from agent_evo.utils.llm import LLMClient
 from agent_evo.utils.i18n import t
 
@@ -128,7 +128,160 @@ You are a test case refinement expert. Generate standard test cases based on pro
         if not records:
             return [], ImportResult(errors=[t("no_valid_records")])
 
-        # 提炼为 TestCase / Refine to TestCase
+        return await self._refine_records(records, auto_refine)
+
+    async def import_from_source(
+        self,
+        source: APISourceConfig,
+        auto_refine: bool = True,
+    ) -> tuple[list[TestCase], ImportResult]:
+        """从 HTTP API 数据源拉取并导入 / Fetch from HTTP API source and import"""
+        records = await self._fetch_from_api(source)
+
+        if not records:
+            return [], ImportResult(errors=[t("no_valid_records")])
+
+        return await self._refine_records(records, auto_refine)
+
+    # ── HTTP 数据源拉取 / HTTP data source fetching ──────────
+
+    async def _fetch_from_api(self, source: APISourceConfig) -> list[ProductionRecord]:
+        """从 HTTP API 拉取数据并映射为 ProductionRecord
+        Fetch data from HTTP API and map to ProductionRecord"""
+        import httpx
+
+        all_records: list[ProductionRecord] = []
+        pagination = source.pagination
+
+        # 构建基础请求参数 / Build base request params
+        base_params = dict(source.params)
+        if source.filter:
+            base_params.update(source.filter)
+
+        page = 1
+        cursor: Optional[str] = None
+
+        async with httpx.AsyncClient(timeout=source.timeout) as client:
+            while True:
+                # 构建本次请求参数 / Build per-request params
+                request_params = dict(base_params)
+                if pagination:
+                    if pagination.type == "page":
+                        request_params[pagination.page_param] = page
+                        request_params[pagination.size_param] = pagination.size
+                    elif pagination.type == "offset":
+                        request_params[pagination.page_param] = (page - 1) * pagination.size
+                        request_params[pagination.size_param] = pagination.size
+                    elif pagination.type == "cursor" and cursor:
+                        param_name = pagination.cursor_param or pagination.page_param
+                        request_params[param_name] = cursor
+
+                # 发起请求 / Send request
+                if source.method == "GET":
+                    response = await client.get(
+                        source.url,
+                        headers=source.headers,
+                        params=request_params,
+                    )
+                else:
+                    response = await client.post(
+                        source.url,
+                        headers=source.headers,
+                        json=request_params,
+                    )
+
+                response.raise_for_status()
+                body = response.json()
+
+                # 从响应中提取数据数组 / Extract data array from response
+                data_list = self._extract_by_path(body, source.data_path)
+                if not isinstance(data_list, list) or not data_list:
+                    break
+
+                # 字段映射 → ProductionRecord / Field mapping → ProductionRecord
+                for item in data_list:
+                    record = self._map_to_record(item, source.field_mapping)
+                    if record:
+                        all_records.append(record)
+
+                # 分页控制 / Pagination control
+                if not pagination:
+                    break
+
+                if pagination.type in ("page", "offset"):
+                    # 检查是否还有下一页 / Check if there are more pages
+                    if pagination.total_path:
+                        total = self._extract_by_path(body, pagination.total_path)
+                        if isinstance(total, (int, float)) and page * pagination.size >= total:
+                            break
+                    if len(data_list) < pagination.size:
+                        break
+                elif pagination.type == "cursor":
+                    if not pagination.cursor_path:
+                        break
+                    next_cursor = self._extract_by_path(body, pagination.cursor_path)
+                    if not next_cursor:
+                        break
+                    cursor = str(next_cursor)
+
+                page += 1
+                if page > pagination.max_pages:
+                    break
+
+        return all_records
+
+    @staticmethod
+    def _extract_by_path(data: Any, path: str) -> Any:
+        """通过点分隔路径提取嵌套 JSON 值 / Extract nested JSON value by dot-separated path
+
+        例如 / Example: _extract_by_path({"data": {"records": [...]}}, "data.records") → [...]
+        """
+        current = data
+        for key in path.split("."):
+            if isinstance(current, dict) and key in current:
+                current = current[key]
+            else:
+                return None
+        return current
+
+    @staticmethod
+    def _map_to_record(item: dict, field_mapping: dict[str, str]) -> Optional[ProductionRecord]:
+        """将 API 返回的字段映射为 ProductionRecord
+        Map API response fields to ProductionRecord
+
+        field_mapping 格式 / format: {AgentEvo字段: API字段}
+        例如 / Example: {"query": "user_input", "agent_response": "bot_reply"}
+        """
+        mapped: dict[str, Any] = {}
+        for target_field, source_field in field_mapping.items():
+            # 支持点分隔路径 / Support dot-separated paths
+            value = item
+            for key in source_field.split("."):
+                if isinstance(value, dict) and key in value:
+                    value = value[key]
+                else:
+                    value = None
+                    break
+            if value is not None:
+                mapped[target_field] = value
+
+        # 必填字段检查 / Required fields check
+        if "query" not in mapped or "agent_response" not in mapped:
+            return None
+
+        try:
+            return ProductionRecord(**mapped)
+        except Exception:
+            return None
+
+    # ── 公共提炼流程 / Common refinement workflow ─────────────
+
+    async def _refine_records(
+        self,
+        records: list[ProductionRecord],
+        auto_refine: bool,
+    ) -> tuple[list[TestCase], ImportResult]:
+        """将 ProductionRecord 列表提炼为 TestCase / Refine ProductionRecord list to TestCase"""
         cases = []
         errors = []
         for record in records:

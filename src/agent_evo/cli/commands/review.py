@@ -20,9 +20,11 @@ def run_review(config_path: str, status: str, approve_all: bool, interactive: bo
     try:
         config = load_config(config_path)
 
-        # 扫描所有测试文件 / Scan all test files
-        test_pattern = config.test_cases
-        files = sorted(glob(test_pattern))
+        # 扫描 gold + silver 两个路径 / Scan both gold and silver paths
+        test_patterns = [config.test_cases, config.silver_test_cases]
+        files = []
+        for pattern in test_patterns:
+            files.extend(sorted(glob(pattern)))
         if not files:
             console.print(f"[yellow]{t('no_test_files')}[/yellow]")
             return

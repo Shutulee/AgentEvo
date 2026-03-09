@@ -18,6 +18,7 @@ async def run_pipeline(
     create_pr: bool,
     dry_run: bool,
     tier: Optional[str] = None,
+    include_silver: bool = False,
 ):
     """运行完整流程 / Run full pipeline"""
     try:
@@ -29,6 +30,7 @@ async def run_pipeline(
             create_pr=create_pr,
             tags=tags,
             tier=tier,
+            include_silver=include_silver,
             dry_run=dry_run,
         )
 

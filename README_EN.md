@@ -41,7 +41,9 @@ This generates:
 your-agent-project/
 ├── agent-evo.yaml        # AgentEvo config
 ├── tests/
-│   └── basic.yaml        # Test case template
+│   ├── gold/             # Gold test set (hand-written, high quality)
+│   │   └── basic.yaml    # Test case template
+│   └── silver/           # Silver test set (auto-generated via mutate/import)
 └── ... your existing code
 ```
 
@@ -69,7 +71,10 @@ agent:
   function: "run"             # Function name
   prompt_file: "./prompt.md"  # Your prompt file (optional, for auto-optimization)
 
-test_cases: "./tests/*.yaml"
+# Gold test set (hand-written)
+test_cases: "./tests/gold/**/*.yaml"
+# Silver test set (auto-generated via mutate/import)
+silver_test_cases: "./tests/silver/**/*.yaml"
 
 llm:
   provider: "openai"
@@ -82,12 +87,14 @@ judge:
 
 That's usually all you need. `judge.pass_threshold` is the pass/fail score threshold (0-1), default 0.7.
 
+Gold and silver test sets are stored separately: `test_cases` points to the hand-written gold set, while `silver_test_cases` points to auto-generated silver cases from `mutate` or `import`. By default, only gold cases are evaluated; add `--include-silver` to include silver cases as well.
+
 ### Step 4: Write Test Cases
 
 Just like writing SFT data — provide an input and an ideal response:
 
 ```yaml
-# tests/basic.yaml
+# tests/gold/basic.yaml
 name: "Basic Tests"
 description: "Test core Agent capabilities"
 
@@ -129,17 +136,44 @@ The LLM automatically determines whether each dimension is applicable — e.g., 
 
 AgentEvo also supports automatic test set expansion:
 
-**Mutation** — automatically generate variants from existing cases:
+**Mutation** — automatically generate silver set variants from gold cases:
 
 ```bash
-agent-evo mutate --seed ./tests/golden.yaml --count 3 -o ./tests/silver.yaml
+agent-evo mutate --seed ./tests/gold/basic.yaml --count 3 -o ./tests/silver/generated.yaml
 ```
 
 **Production Import** — convert production bad cases into test cases:
 
 ```bash
-agent-evo import --format jsonl --file ./bad_cases.jsonl -o ./tests/production.yaml
+# Option 1: Import from a local file (jsonl/csv/yaml)
+agent-evo import --file ./bad_cases.jsonl --format jsonl -o ./tests/silver/production.yaml
+
+# Option 2: Fetch directly from a live HTTP API
+agent-evo import --source production
 ```
+
+Option 2 requires configuring a data source in `agent-evo.yaml`:
+
+```yaml
+import_sources:
+  - name: "production"
+    type: "api"
+    url: "https://your-service.com/api/bad-cases"
+    method: GET
+    headers:
+      Authorization: "Bearer ${API_TOKEN}"
+    data_path: "data.records"       # Path to data array in JSON response
+    field_mapping:                   # Your API fields → AgentEvo standard fields
+      query: "user_input"
+      agent_response: "bot_reply"
+      error_type: "label"
+    pagination:
+      type: "page"                  # Supports page/offset/cursor
+      size: 100
+      total_path: "data.total"
+```
+
+Supports auto-pagination, nested field mapping, and `${ENV_VAR}` environment variable references.
 
 Auto-generated cases default to `pending` status and require review before participating in formal evaluation:
 
@@ -160,6 +194,7 @@ Filter by tag or tier:
 ```bash
 agent-evo eval --tags safety        # Run only safety cases
 agent-evo eval --tier gold          # Run only gold tier
+agent-evo eval --include-silver     # Include silver test cases
 agent-evo eval -o report.json       # Export JSON report
 ```
 
@@ -198,8 +233,16 @@ There's a simple Q&A example in the project to get a quick feel:
 
 ```bash
 cd examples/simple-qa
-export OPENAI_API_KEY="your-api-key"
-agent-evo eval
+cp .env.example .env     # Fill in your API Key
+agent-evo eval           # Run gold set evaluation
+```
+
+To experience the full silver set expansion workflow:
+
+```bash
+agent-evo mutate --seed ./tests/gold/basic.yaml --count 3 -o ./tests/silver/generated.yaml
+agent-evo review --approve-all
+agent-evo eval --include-silver
 ```
 
 This is just a minimal demo. In practice, point the entry function to your own Agent.
@@ -230,6 +273,18 @@ agent-evo gate-check    # Check all required_for_release tags
 - run: agent-evo gate-check   # Fails the pipeline if thresholds not met
 ```
 
+## Language Switch
+
+Set in `agent-evo.yaml`:
+
+```yaml
+language: "en"  # English
+# or
+language: "zh"  # Chinese
+```
+
+All evaluation reports and terminal output will automatically switch language.
+
 ## Command Reference
 
 | Command | Description |
@@ -239,7 +294,7 @@ agent-evo gate-check    # Check all required_for_release tags
 | `agent-evo run --fix` | Full Pipeline: evaluate + diagnose + optimize + regression |
 | `agent-evo report` | View evaluation report (terminal/json/html) |
 | `agent-evo mutate` | Generate test case variants from seed cases |
-| `agent-evo import` | Import production bad cases as test cases |
+| `agent-evo import` | Import production bad cases (`--file` local file / `--source` HTTP API fetch) |
 | `agent-evo review` | Review pending cases (from mutation/import) |
 | `agent-evo gate-check` | Pre-release gate check (non-zero exit code = blocked) |
 | `agent-evo stats` | Test set statistics (by tag/tier/source) |

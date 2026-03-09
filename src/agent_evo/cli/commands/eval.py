@@ -20,12 +20,13 @@ async def run_eval(
     tags: Optional[list[str]],
     output: Optional[str],
     tier: Optional[str] = None,
+    include_silver: bool = False,
 ):
     """运行评测 / Run evaluation"""
     try:
         config = load_config(config_path)
         pipeline = Pipeline(config)
-        report = await pipeline.eval_only(tags=tags, tier=tier)
+        report = await pipeline.eval_only(tags=tags, tier=tier, include_silver=include_silver)
 
         # 显示结果 / Display results
         _print_report(report)

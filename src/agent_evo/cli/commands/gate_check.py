@@ -30,7 +30,8 @@ async def run_gate_check(config_path: str):
 
         console.print(f"[bold]{t('gate_check_title').format(tags=', '.join(required_tags))}[/bold]\n")
 
-        report = await pipeline.eval_only(tags=required_tags)
+        # 门禁检查只跑黄金集 / Gate check only runs gold set
+        report = await pipeline.eval_only(tags=required_tags, include_silver=False)
 
         # 检查每个 tag 是否达标 / Check if each tag meets threshold
         all_passed = True

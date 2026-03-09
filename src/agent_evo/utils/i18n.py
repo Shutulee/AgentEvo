@@ -143,6 +143,19 @@ _TEXTS: dict[str, dict[str, str]] = {
         "zh": "所有用例状态为 pending，请通过 agent-evo review 审核",
         "en": "All cases are pending, please review via agent-evo review",
     },
+    "source_not_found": {
+        "zh": "未找到数据源: {name}",
+        "en": "Data source not found: {name}",
+    },
+    "available_sources": {"zh": "可用数据源", "en": "Available sources"},
+    "fetching_source": {
+        "zh": "正在从数据源 [{name}] 拉取数据: {url}",
+        "en": "Fetching from source [{name}]: {url}",
+    },
+    "fetch_source_error": {
+        "zh": "数据源拉取失败: {err}",
+        "en": "Failed to fetch from source: {err}",
+    },
 
     # ── mutate 命令 / mutate command ──
     "loaded_seeds": {"zh": "加载了 {n} 条种子用例", "en": "Loaded {n} seed cases"},
@@ -201,8 +214,26 @@ _TEXTS: dict[str, dict[str, str]] = {
         "en": "Run [cyan]agent-evo eval[/cyan] to start evaluation",
     },
     "init_step_run": {
-        "zh": "运行 [cyan]agent-evo run --fix[/cyan] 自动优化",
-        "en": "Run [cyan]agent-evo run --fix[/cyan] for auto-optimization",
+        "zh": "运行 [cyan]agent-evo auto[/cyan] 一站式评测 + 自动优化",
+        "en": "Run [cyan]agent-evo auto[/cyan] for one-stop evaluation + auto-optimization",
+    },
+
+    # ── auto 命令 / auto command ──
+    "auto_start": {
+        "zh": "🚀 一站式自动评测 + 优化启动",
+        "en": "🚀 One-stop auto evaluation + optimization started",
+    },
+    "auto_success": {
+        "zh": "✅ 评测全部通过，无需优化",
+        "en": "✅ All tests passed, no optimization needed",
+    },
+    "auto_optimized": {
+        "zh": "✅ 自动优化完成，提示词已更新",
+        "en": "✅ Auto-optimization completed, prompt updated",
+    },
+    "auto_partial": {
+        "zh": "⚠️ 优化已尝试，仍有失败用例需人工排查",
+        "en": "⚠️ Optimization attempted, some cases still need manual review",
     },
 
     # ── run 命令 / run command ──
@@ -224,6 +255,14 @@ _TEXTS: dict[str, dict[str, str]] = {
     "agent_load_fail": {
         "zh": "无法加载 Agent: {path}\n请确保模块存在且函数已导出。\n错误: {err}",
         "en": "Cannot load Agent: {path}\nEnsure the module exists and the function is exported.\nError: {err}",
+    },
+    "http_adapter_request_fail": {
+        "zh": "HTTP 请求失败: {url}\n状态码: {status}\n错误: {err}",
+        "en": "HTTP request failed: {url}\nStatus: {status}\nError: {err}",
+    },
+    "http_adapter_stream_error": {
+        "zh": "Agent 返回流式错误 (code={code}): {msg}",
+        "en": "Agent returned streaming error (code={code}): {msg}",
     },
 
     # ── 其他 / Others ──
@@ -249,4 +288,13 @@ _TEXTS: dict[str, dict[str, str]] = {
     "process_record_fail": {"zh": "处理记录失败: {err}", "en": "Failed to process record: {err}"},
     "common_fail_count": {"zh": "共 {n} 条用例失败", "en": "{n} cases failed in total"},
     "suggest_manual_check": {"zh": "建议人工检查失败用例的因子归因", "en": "Suggest manual inspection of factor attributions for failed cases"},
+
+    # ── behavior 维度校验 / behavior dimension checks ──
+    "tool_not_called": {"zh": "必需工具 {tool} 未被调用", "en": "Required tool {tool} was not called"},
+    "tool_missing_params": {"zh": "工具 {tool} 缺少必需参数: {params}", "en": "Tool {tool} missing required params: {params}"},
+    "tool_wrong_params": {"zh": "工具 {tool} 参数值不匹配: {details}", "en": "Tool {tool} param values mismatch: {details}"},
+    "tool_forbidden_called": {"zh": "调用了禁止的工具: {tools}", "en": "Forbidden tools were called: {tools}"},
+    "tool_max_calls_exceeded": {"zh": "工具调用次数 {actual} 超过最大限制 {max}", "en": "Tool call count {actual} exceeded max limit {max}"},
+    "tool_sequence_mismatch": {"zh": "工具调用序列不匹配: 期望 {expected}, 实际 {actual}", "en": "Tool call sequence mismatch: expected {expected}, got {actual}"},
+    "tool_sequence_missing": {"zh": "缺少必需的工具调用: {tools}", "en": "Missing required tool calls: {tools}"},
 }

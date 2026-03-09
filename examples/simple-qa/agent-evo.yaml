@@ -7,7 +7,10 @@ agent:
   function: "run"
   prompt_file: "./system_prompt.md"
 
-test_cases: "./tests/*.yaml"
+# 黄金测评集（用户手写）
+test_cases: "./tests/gold/**/*.yaml"
+# 白银测评集（mutate/import 自动生成）
+silver_test_cases: "./tests/silver/**/*.yaml"
 
 llm:
   provider: "openai"
@@ -36,3 +39,27 @@ optimization:
 
 git:
   enabled: false
+
+# ── 线上数据源配置（用于 agent-evo import --source） ──
+# 取消注释并修改为你的实际 API 地址即可使用
+# import_sources:
+#   - name: "production"             # 数据源名称，通过 --source production 引用
+#     type: "api"
+#     url: "https://your-service.com/api/bad-cases"
+#     method: GET
+#     headers:
+#       Authorization: "Bearer ${API_TOKEN}"
+#     params:
+#       status: "bad"
+#     data_path: "data.records"      # 响应 JSON 中数据数组的路径
+#     field_mapping:                  # API 字段 → AgentEvo 标准字段
+#       query: "user_input"
+#       agent_response: "bot_reply"
+#       error_type: "label"
+#       corrected_response: "corrected"
+#     pagination:
+#       type: "page"
+#       page_param: "page"
+#       size_param: "page_size"
+#       size: 100
+#       total_path: "data.total"

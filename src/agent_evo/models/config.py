@@ -4,12 +4,69 @@ import warnings
 from typing import Optional, Literal
 from pydantic import BaseModel, Field, model_validator
 
+from agent_evo.models.import_models import APISourceConfig
+
+
+class HttpAgentConfig(BaseModel):
+    """HTTP Agent 配置 / HTTP Agent configuration"""
+    url: str = Field(..., description="API 地址 / API URL")
+    method: str = Field(default="POST", description="HTTP 方法 / HTTP method")
+    headers: dict[str, str] = Field(default_factory=dict, description="请求头 / Request headers")
+    body: dict = Field(
+        default_factory=lambda: {"input": "${input}"},
+        description="请求体模板，${input} 会被替换为测试输入 / Request body template, ${input} is replaced",
+    )
+    response_path: Optional[str] = Field(
+        default=None,
+        description="非流式响应中结果的 JSON 路径 / JSON path for result in non-streaming response",
+    )
+    stream: bool = Field(default=False, description="是否为 SSE 流式接口 / Whether SSE streaming")
+    stream_event_field: str = Field(default="event", description="SSE 事件类型字段名 / SSE event type field")
+    stream_content_field: str = Field(default="content", description="SSE 内容字段名 / SSE content field")
+    stream_done_event: str = Field(default="done", description="SSE 完成事件名 / SSE done event name")
+    stream_text_events: list[str] = Field(
+        default_factory=lambda: ["text"],
+        description="视为文本输出的事件类型 / Event types treated as text output",
+    )
+    timeout: float = Field(default=120.0, description="请求超时秒数 / Request timeout in seconds")
+
 
 class AgentConfig(BaseModel):
-    """被测 Agent 配置 / Agent under test configuration"""
-    module: str = Field(..., description="Agent 入口模块 / Agent entry module")
+    """被测 Agent 配置 / Agent under test configuration
+
+    支持两种模式 / Supports two modes:
+    - callable: 本地 Python 函数调用（默认）/ Local Python function call (default)
+    - http: 远程 HTTP API 调用 / Remote HTTP API call
+    """
+    type: Literal["callable", "http"] = Field(
+        default="callable",
+        description="适配器类型 / Adapter type: callable (local function) or http (remote API)",
+    )
+
+    # callable 模式字段（type=callable 时必填）
+    # callable mode fields (required when type=callable)
+    module: Optional[str] = Field(default=None, description="Agent 入口模块 / Agent entry module")
     function: str = Field(default="run", description="Agent 入口函数 / Agent entry function")
-    prompt_file: str = Field(..., description="系统提示词文件路径 / System prompt file path")
+
+    # 通用字段 / Common fields
+    prompt_file: Optional[str] = Field(default=None, description="系统提示词文件路径 / System prompt file path")
+
+    # http 模式字段（type=http 时必填）
+    # http mode fields (required when type=http)
+    http: Optional[HttpAgentConfig] = Field(default=None, description="HTTP 适配器配置 / HTTP adapter config")
+
+    @model_validator(mode="after")
+    def validate_agent_config(self) -> "AgentConfig":
+        """根据 type 验证必填字段 / Validate required fields based on type"""
+        if self.type == "callable":
+            if not self.module:
+                raise ValueError("agent.module is required when type is 'callable'")
+            if not self.prompt_file:
+                raise ValueError("agent.prompt_file is required when type is 'callable'")
+        elif self.type == "http":
+            if not self.http:
+                raise ValueError("agent.http is required when type is 'http'")
+        return self
 
 
 class LLMConfig(BaseModel):
@@ -121,7 +178,8 @@ class Config(BaseModel):
     """AgentEvo 完整配置 / AgentEvo full configuration"""
     version: str = "1"
     agent: AgentConfig
-    test_cases: str = Field(default="./tests/*.yaml", description="测试用例路径，支持 glob / Test cases path, supports glob")
+    test_cases: str = Field(default="./tests/gold/**/*.yaml", description="黄金测评集路径（glob）/ Gold test cases path (glob)")
+    silver_test_cases: str = Field(default="./tests/silver/**/*.yaml", description="白银测评集路径（glob）/ Silver test cases path (glob)")
     llm: LLMConfig = Field(default_factory=LLMConfig)
     judge: JudgeConfig = Field(default_factory=JudgeConfig)
     optimization: OptimizationConfig = Field(default_factory=OptimizationConfig)
@@ -132,6 +190,10 @@ class Config(BaseModel):
     mutation: MutationConfig = Field(default_factory=MutationConfig)
     import_config: Optional[ImportConfig] = Field(default=None, alias="import")
     tag_policies: dict[str, TagPolicyConfig] = Field(default_factory=dict)
+
+    # HTTP 数据源配置（用于 agent-evo import --source）
+    # HTTP data source config (for agent-evo import --source)
+    import_sources: list[APISourceConfig] = Field(default_factory=list)
 
     # 报告语言配置：zh=中文, en=English
     # Report language setting: zh=Chinese, en=English

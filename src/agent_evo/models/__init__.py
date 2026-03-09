@@ -14,7 +14,7 @@ from agent_evo.models.eval_result import (
     FactorResult, FactorSummary, AggregatedDiagnosis,
 )
 from agent_evo.models.optimization import OptimizationResult
-from agent_evo.models.import_models import ProductionRecord, ImportResult
+from agent_evo.models.import_models import ProductionRecord, ImportResult, APISourceConfig, PaginationConfig
 
 __all__ = [
     # 配置 / Configuration
@@ -30,5 +30,5 @@ __all__ = [
     # 优化 / Optimization
     "OptimizationResult",
     # 导入 / Import
-    "ProductionRecord", "ImportResult",
+    "ProductionRecord", "ImportResult", "APISourceConfig", "PaginationConfig",
 ]

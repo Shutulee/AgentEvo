@@ -13,14 +13,14 @@
 4. 生成 {count} 个变异用例
 
 ## 输出格式（JSON）
-{
+{{
   "mutations": [
-    {
+    {{
       "input": "变异后的用户输入",
       "name": "变异用例名称",
       "mutation_strategy": "你选择的变异方式（简短描述）",
       "expected_output": "理想的 Agent 回答",
       "tags": ["继承种子的tag", "新增的tag"]
-    }
+    }}
   ]
-}
+}}
